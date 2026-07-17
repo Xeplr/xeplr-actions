@@ -1,15 +1,33 @@
 {
   "name": "@xeplr/actions",
-  "version": "1.0.0",
-  "description": "Named-action registry with typed inputs and safe invocation — the executor primitive shared by jobs and workflow",
+  "version": "1.1.0",
+  "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
   "files": ["index.js", "lib/"],
-  "keywords": ["action", "executor", "registry", "handler", "runner"],
+  "keywords": ["action", "executor", "registry", "handler", "runner", "http", "db", "file", "email"],
   "author": "xeplr",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/Xeplr/xeplr-actions" },
   "publishConfig": { "access": "public" },
   "dependencies": {
     "@xeplr/schema-handler": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@xeplr/utils": "^1.0.0",
+    "pg":           "^8.0.0",
+    "mysql2":       "^3.0.0",
+    "mssql":        "^11.0.0",
+    "mongodb":      "^6.0.0",
+    "exceljs":      "^4.0.0",
+    "csv-parse":    "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@xeplr/utils": { "optional": true },
+    "pg":           { "optional": true },
+    "mysql2":       { "optional": true },
+    "mssql":        { "optional": true },
+    "mongodb":      { "optional": true },
+    "exceljs":      { "optional": true },
+    "csv-parse":    { "optional": true }
   }
 }
