@@ -3,31 +3,88 @@
   "version": "1.1.0",
   "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
-  "files": ["index.js", "lib/"],
-  "keywords": ["action", "executor", "registry", "handler", "runner", "http", "db", "file", "email"],
+  "files": [
+    "index.js",
+    "lib/"
+  ],
+  "keywords": [
+    "action",
+    "executor",
+    "registry",
+    "handler",
+    "runner",
+    "http",
+    "db",
+    "file",
+    "email"
+  ],
   "author": "xeplr",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/Xeplr/xeplr-actions" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xeplr/xeplr-actions"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@xeplr/schema-handler": "^1.0.0"
   },
   "peerDependencies": {
     "@xeplr/utils": "^1.0.0",
-    "pg":           "^8.0.0",
-    "mysql2":       "^3.0.0",
-    "mssql":        "^11.0.0",
-    "mongodb":      "^6.0.0",
-    "exceljs":      "^4.0.0",
-    "csv-parse":    "^5.0.0"
+    "csv-parse": "^5.0.0",
+    "exceljs": "^4.0.0",
+    "knex": "^3.0.0",
+    "mongodb": "^6.0.0",
+    "mssql": "^11.0.0",
+    "mysql2": "^3.0.0",
+    "pg": "^8.0.0",
+    "saxes": "^6.0.0",
+    "ssh2-sftp-client": "^11.0.0",
+    "unzipper": "^0.12.5"
   },
   "peerDependenciesMeta": {
-    "@xeplr/utils": { "optional": true },
-    "pg":           { "optional": true },
-    "mysql2":       { "optional": true },
-    "mssql":        { "optional": true },
-    "mongodb":      { "optional": true },
-    "exceljs":      { "optional": true },
-    "csv-parse":    { "optional": true }
+    "@xeplr/utils": {
+      "optional": true
+    },
+    "knex": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    },
+    "mssql": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "exceljs": {
+      "optional": true
+    },
+    "unzipper": {
+      "optional": true
+    },
+    "saxes": {
+      "optional": true
+    },
+    "csv-parse": {
+      "optional": true
+    },
+    "ssh2-sftp-client": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "csv-parse": "^5.0.0",
+    "express": "^4.0.0",
+    "mssql": "^12.7.0",
+    "mysql2": "^3.23.1",
+    "pg": "^8.0.0",
+    "saxes": "^6.0.0",
+    "unzipper": "^0.12.0"
   }
 }
