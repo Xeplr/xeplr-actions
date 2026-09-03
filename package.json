@@ -80,7 +80,7 @@
   },
   "devDependencies": {
     "csv-parse": "^5.0.0",
-    "express": "^4.0.0",
+    "express": "^5.2.1",
     "mssql": "^12.7.0",
     "mysql2": "^3.23.1",
     "pg": "^8.0.0",
