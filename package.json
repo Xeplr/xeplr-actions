@@ -34,7 +34,7 @@
     "@duckdb/node-api": "1.5.5-r.3",
     "@xeplr/email": "^1.0.0",
     "@xeplr/utils": "^1.0.0",
-    "csv-parse": "^5.0.0",
+    "csv-parse": "^7.0.2",
     "exceljs": "^4.0.0",
     "imapflow": "^1.0.0",
     "knex": "^3.0.0",
@@ -100,7 +100,7 @@
   },
   "devDependencies": {
     "@duckdb/node-api": "^1.5.5-r.3",
-    "csv-parse": "^5.0.0",
+    "csv-parse": "^7.0.2",
     "express": "^4.0.0",
     "mssql": "^12.7.0",
     "mysql2": "^3.23.1",
