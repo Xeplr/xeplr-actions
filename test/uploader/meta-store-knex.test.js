@@ -15,7 +15,7 @@ var makeKnexMetaStore = require('../../lib/uploader/meta-store-knex');
 var { upload, rollback } = require('../../lib/uploader');
 var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
-var PG = { host: 'localhost', port: 5435, user: 'postgres', password: 'l@rocal!Z2t9' };
+var PG = { host: 'localhost', port: 5435, user: 'postgres', password: process.env.PG_PASSWORD || 'postgres' };
 var TARGET = Object.assign({}, PG, { database: 'xeplr_actions_test' });
 var CONFIG_DB = 'xeplr_config_meta_test';
 // Deliberately DIFFERENT strings, so a statement that filters on the wrong

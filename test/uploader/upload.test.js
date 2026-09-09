@@ -10,7 +10,7 @@ var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
 var CONN = {
   host: 'localhost', port: 5435, user: 'postgres',
-  password: 'l@rocal!Z2t9', database: 'xeplr_actions_test'
+  password: process.env.PG_PASSWORD || 'postgres', database: 'xeplr_actions_test'
 };
 
 var pool = null;

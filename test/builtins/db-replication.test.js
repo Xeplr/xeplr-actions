@@ -19,7 +19,7 @@ var { upload } = require('../../lib/uploader');
 var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
 var PG = { host: process.env.PG_HOST || 'localhost', port: +(process.env.PG_PORT || 5435),
-  user: process.env.PG_USER || 'postgres', password: process.env.PG_PASSWORD || 'l@rocal!Z2t9', database: 'xeplr_actions_test' };
+  user: process.env.PG_USER || 'postgres', password: process.env.PG_PASSWORD || 'postgres', database: 'xeplr_actions_test' };
 var MY = { host: process.env.MYSQL_HOST || 'localhost', port: +(process.env.MYSQL_PORT || 3306),
   user: process.env.MYSQL_USER || 'root', password: process.env.MYSQL_PASSWORD || 'break_karo', database: 'xeplr_actions_test' };
 var MS = { host: process.env.MSSQL_HOST || 'localhost', port: +(process.env.MSSQL_PORT || 1433),
