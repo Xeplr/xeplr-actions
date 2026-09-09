@@ -24,7 +24,11 @@ test('type map covers every logical type', function() {
   assert.strictEqual(driver.toMysqlType('string'),   'LONGTEXT');
   assert.strictEqual(driver.toMysqlType('number'),   'DECIMAL(38,10)');
   assert.strictEqual(driver.toMysqlType('boolean'),  'TINYINT(1)');
-  assert.strictEqual(driver.toMysqlType('date'),     'DATETIME(6)');
+  // A DATE IS NOT A DATETIME. This asserted DATETIME(6) for both, which is
+  // what made a source DATE column acquire a midnight in the target — and a
+  // midnight shifts under a timezone, moving a business date by a day. The
+  // logical vocabulary now has both and they map to different column types.
+  assert.strictEqual(driver.toMysqlType('date'),     'DATE');
   assert.strictEqual(driver.toMysqlType('datetime'), 'DATETIME(6)');
   assert.strictEqual(driver.toMysqlType('object'),   'JSON');
   assert.strictEqual(driver.toMysqlType('array'),    'JSON');

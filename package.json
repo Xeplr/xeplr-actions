@@ -1,6 +1,6 @@
 {
   "name": "@xeplr/actions",
-  "version": "1.1.1",
+  "version": "1.1.4",
   "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
   "files": [
@@ -31,13 +31,18 @@
     "@xeplr/schema-handler": "^1.0.0"
   },
   "peerDependencies": {
+    "@duckdb/node-api": "1.5.5-r.3",
+    "@xeplr/email": "^1.0.0",
     "@xeplr/utils": "^1.0.0",
     "csv-parse": "^5.0.0",
     "exceljs": "^4.0.0",
+    "imapflow": "^1.0.0",
     "knex": "^3.0.0",
+    "mailparser": "^3.0.0",
     "mongodb": "^6.0.0",
     "mssql": "^11.0.0",
     "mysql2": "^3.0.0",
+    "nodemailer": "^8.0.2",
     "pg": "^8.0.0",
     "saxes": "^6.0.0",
     "ssh2-sftp-client": "^11.0.0",
@@ -45,6 +50,9 @@
   },
   "peerDependenciesMeta": {
     "@xeplr/utils": {
+      "optional": true
+    },
+    "@duckdb/node-api": {
       "optional": true
     },
     "knex": {
@@ -74,11 +82,24 @@
     "csv-parse": {
       "optional": true
     },
+    "imapflow": {
+      "optional": true
+    },
+    "mailparser": {
+      "optional": true
+    },
+    "nodemailer": {
+      "optional": true
+    },
     "ssh2-sftp-client": {
+      "optional": true
+    },
+    "@xeplr/email": {
       "optional": true
     }
   },
   "devDependencies": {
+    "@duckdb/node-api": "^1.5.5-r.3",
     "csv-parse": "^5.0.0",
     "express": "^4.0.0",
     "mssql": "^12.7.0",

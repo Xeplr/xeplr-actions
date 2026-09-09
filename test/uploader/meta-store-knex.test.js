@@ -18,6 +18,11 @@ var { SqlQueue } = require('@xeplr/utils/lib/queue');
 var PG = { host: 'localhost', port: 5435, user: 'postgres', password: 'l@rocal!Z2t9' };
 var TARGET = Object.assign({}, PG, { database: 'xeplr_actions_test' });
 var CONFIG_DB = 'xeplr_config_meta_test';
+// Deliberately DIFFERENT strings, so a statement that filters on the wrong
+// one fails the test instead of passing by coincidence — which is exactly the
+// embedded case (package xeplr-workflow running as product xeplr-bi).
+var SERVICE = 'xeplr-actions-test';
+var APPLICATION_ID = 'xeplr-test-app';
 
 var configKnex = null;   // handle to xeplr_config (holds import_meta)
 var store = null;
@@ -46,7 +51,9 @@ test.before(async function() {
   // Bootstrap the config DB (import_meta table); skip reference-data seeds.
   var boot = await bootstrapConfigDb({ connection: PG, database: CONFIG_DB, seed: false });
   configKnex = boot.db;
-  store = makeKnexMetaStore(configKnex);
+  // service = the PACKAGE writing rows, applicationId = the PRODUCT owning
+  // them. Both required: import_meta is shared by every app.
+  store = makeKnexMetaStore(configKnex, { service: SERVICE, applicationId: APPLICATION_ID });
   pool = await pgDriver.connect(TARGET);
 });
 
@@ -131,7 +138,12 @@ test('rollback recordEnd flips status and stashes delete counts', async function
   try {
     await upload({
       source: asIterable([{ id: 'A', amount: 1 }, { id: 'B', amount: 2 }]),
-      driver: pgDriver, connection: pool, targetTable: tbl, primaryKeys: ['id'],
+      // NO primaryKeys: rollback refuses upsert movements outright (see the
+      // guard in lib/uploader/index.js — an upsert cannot tell rows it
+      // created from rows it merely updated, so there is no safe partial
+      // undo). This test is about the META bookkeeping of a rollback, so it
+      // uses the append-only movement that rollback actually supports.
+      driver: pgDriver, connection: pool, targetTable: tbl,
       movementId: 'mv_meta_rb', queue: q, dbType: 'postgres', metaStore: store,
       batchSize: 10, firstBatchScanRows: 5
     });

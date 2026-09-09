@@ -24,7 +24,8 @@ test('type map covers every logical type', function() {
   assert.strictEqual(driver.toMssqlType('string'),   'NVARCHAR(MAX)');
   assert.strictEqual(driver.toMssqlType('number'),   'DECIMAL(38,10)');
   assert.strictEqual(driver.toMssqlType('boolean'),  'BIT');
-  assert.strictEqual(driver.toMssqlType('date'),     'DATETIME2');
+  // A DATE IS NOT A DATETIME — see the same assertion in mysql.test.js.
+  assert.strictEqual(driver.toMssqlType('date'),     'DATE');
   assert.strictEqual(driver.toMssqlType('datetime'), 'DATETIME2');
   assert.strictEqual(driver.toMssqlType('object'),   'NVARCHAR(MAX)');
   assert.strictEqual(driver.toMssqlType('array'),    'NVARCHAR(MAX)');
