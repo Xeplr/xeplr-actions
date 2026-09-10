@@ -1,6 +1,6 @@
 {
   "name": "@xeplr/actions",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
   "files": [
