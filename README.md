@@ -255,6 +255,24 @@ None published. The package has no HTTP routes (a host serves `list()`, e.g. `@x
 
 The repository has `scripts/upload-file.js` (not in the npm package) — a CLI that loads a CSV or Excel file into Postgres with `file-upload`; its header documents the flags (`--file`, `--table`, `--conn-name`, `--conn`, `--host`/`--port`/`--db`/`--user`/`--password`, `--encrypt-conn`).
 
+## Read-only connections — for SQL you did not write
+
+A report preview, a user's query, anything whose SQL text came from outside your own code: connect with `readOnly: true`.
+
+```js
+const pool = await driver.connect({ ...connection, readOnly: true })
+await driver.query(pool, userSql, params)          // reads only
+```
+
+| Driver | What `readOnly` does |
+|---|---|
+| postgres | every `query` and `fetchStream` runs inside `BEGIN TRANSACTION READ ONLY`, always rolled back, over the **extended protocol** — one statement only, so `…; COMMIT; DROP TABLE t` is refused, and nothing inside can switch the transaction back to read-write |
+| mysql | every connection the pool opens is set to `TRANSACTION READ ONLY`; `multipleStatements` stays off, so one statement per query |
+| mssql | `readOnlyIntent` (routes to a readable secondary where one exists) — **not enforcement**: SQL Server runs whole batches and has no session read-only mode. Give such SQL a login with only `db_datareader` |
+| duckdb | read-only unless `access: 'rw'` |
+
+**Values are bound, never written into SQL.** On MySQL, `stringifyObjects` is always on, so an object or array passed as a value is compared as text instead of being expanded into `key = value` pairs. **Procedure parameter names** are written into the call (`@region = @p0`, `region => $1`) and must be plain names — letters, digits and `_`.
+
 ## Rules the code enforces, and why
 
 | rule | why |
