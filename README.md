@@ -106,6 +106,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 
 | key | action name | does |
 |---|---|---|
+| `dataOperation` | `data-operation` | From a list of rows, make the list the next step needs — keep some rows, pick and rename columns, compute new ones, sort, optionally render. See [Data operation](#data-operation). |
 | `dbFetch` | `db-fetch` | Stream rows from a table (`mode: 'table'`) or SQL (`mode: 'query'`, `params`). Default `streaming_mode: true` → NDJSON file `{ filePath, format: 'jsonl', bytes, rows }`; `false` → `{ rows, rowCount }`. |
 | `dbPush` | `db-push` | Write `rows` or an NDJSON `filePath` into `targetTable` through the uploader. `primaryKeys` → upsert. |
 | `dbMove` | `db-move` | One window of rows from a source table, query or procedure into a target table in one streamed pass. See [db-move](#db-move). |
@@ -169,6 +170,54 @@ For `mode: 'table'` the source's declared column types (`getTableSchema`) are pa
 `email-send`: `to` / `cc` / `bcc` accept a bare string. `templateName` + `templateVars` render a stored template via `@xeplr/email` (the host must have called its `initTemplates()`), replacing any subject, html and text on the step. Attachments are nodemailer descriptors, so `saved[]` from `email-download-attachments` can be passed straight in.
 
 Message ids are IMAP UIDs **scoped to `folder`**, and a move changes the id — download and delete before moving.
+
+## Data operation
+
+The step between steps. A fetch returns everything a table holds; an email
+wants four columns, the active rows, sorted, and sometimes rendered. Without
+this, each of those is a module somebody writes and maintains — and the third
+is written differently from the first two.
+
+```js
+await runAction({ name: 'data-operation', input: {
+  from: rows,                                   // a list; one object is one row
+  where: 'status = "active" and [due] <= today()',
+  columns: ['name', { name: 'late', label: 'Days late', formula: 'datediff([due], today())' },
+            { name: 'id', hidden: true }],
+  sort: '-late',
+  format: true, title: 'Overdue'
+} })
+// → { rows, count, html, text }
+```
+
+**Rows and a rendering, both.** `rows` and `count` are always there; `html`
+and `text` only when `format` is on, because building a table for ten
+thousand rows nobody renders is work done and stored on every run. Neither is
+privileged — the next step binds whichever it wants.
+
+**`count` is the point of the step as often as `rows` is**: it is what lets
+the step after it branch on *nothing to report* instead of sending an empty
+email.
+
+**Formulas are `@xeplr/expression-handler`** — the engine running BI's report
+formulas and workflow's conditions, with the same functions. `where` and a
+computed column are the same language.
+
+**What `today()` means comes from the run's context**, not from the action:
+`context.formula` carries `today` and `fiscalYearStart`, so a workspace that
+reckons days elsewhere and a run replayed from history agree on what
+`yesterday()` filtered. The action never calls `new Date()`.
+
+**Only visible columns are rendered.** A column kept for the next step but
+marked `hidden` stays in `rows` and never reaches the table — an id the flow
+needs is not a column a person wants printed.
+
+**A ragged row does not fail the step.** A column missing from one row reads
+as nothing (`missing: 'null'`), because one bad row out of nine hundred
+should not take the other eight hundred and ninety-nine with it.
+
+**No aggregation.** `group by status, count` changes what a row *is*; that is
+a different shape and, when it is wanted, a different step.
 
 ## Uploader
 

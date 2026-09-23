@@ -28,7 +28,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@xeplr/schema-handler": "^1.0.0"
+    "@xeplr/schema-handler": "^1.0.0",
+    "@xeplr/expression-handler": "^2.0.0"
   },
   "peerDependencies": {
     "@duckdb/node-api": "1.5.5-r.3",
