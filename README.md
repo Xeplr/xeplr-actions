@@ -189,6 +189,8 @@ await actions.uploader.upload({
 // → { movementId, tables: { main, errors }, columns, totalRows, totalBatches, completed, dropped, aborted, durationMs }
 ```
 
+`onProgress({ rowsRead, batches, rowsWritten, phase? })` fires after each batch is read, with `rowsWritten` from the write queue's own count, so a caller can show both and see whether writing keeps up. After the read, while the queue drains, it fires again each time the written count moves (`phase: 'writing'`), never on a bare timer, so a stuck write goes quiet.
+
 Rows are spooled to NDJSON files on disk between source and database. From the first batch it creates, if missing: the target table, `<targetTable>_import_errors` (`movement_id`, `row_num`, `error_description`, `underlying_sql`, `raw_row`, `recorded_at`), a `__xeplr_movement_id__` column, and a unique index on `primaryKeys`. Server dialects also add `__xeplr_id__`; DuckDB does not.
 
 Logical types and what each driver creates:
@@ -310,7 +312,7 @@ node --test test/uploader/reconcile.test.js
 
 | needs nothing | needs a database |
 |---|---|
-| `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, so `@xeplr/db` must be resolvable) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js`, `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
+| `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, so `@xeplr/db` must be resolvable) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js`, `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
 | `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
 | | SQL Server `localhost:1433` (`MSSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mssql-integration.test.js` |
 | | Postgres + MySQL + SQL Server (`PG_*`, `MYSQL_*`, `MSSQL_*`): `test/builtins/db-replication.test.js` |
