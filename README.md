@@ -72,7 +72,7 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 | `ActionMissingDependencyError` | Thrown by `register()` for a missing `requires` module. |
 | `TransientError` | For an action to signal "retry me". Nothing in this package (or `@xeplr/jobs`) acts on it yet. |
 | `builtins` | The built-in action modules — see [Built-in actions](#built-in-actions). |
-| `uploader` | `{ upload, rollback, inferColumns, inferColumnType, makeMetaStore }` — see [Uploader](#uploader). |
+| `uploader` | `{ upload, rollback, wasCommitted, inferColumns, inferColumnType, makeMetaStore }` — see [Uploader](#uploader). |
 | `inferColumns(rows)` | `[{ name, type }]` from sample rows. |
 | `streaming` | `{ spool, resume, readBatchFile, checkpoint }` — rows to rotating NDJSON batch files with ordered hooks and resumable checkpoints. |
 | `drivers.db` | `{ getDriver(type), checkDriverRequires, SUPPORTED }` — `postgres`, `mysql`, `mssql`, `mongo`, `duckdb`. |
@@ -141,6 +141,7 @@ The db actions `db-fetch`, `db-push` and `db-procedure` accept a connection two 
 | `writeMode` | `append` (default), `replace` (TRUNCATE the target first if it exists, DELETE if TRUNCATE fails), `upsert` (**requires** `primaryKeys`). |
 | `window` | `{ column, from, to }` → `column >= from AND column < to` (a null edge is left out). `{ columns: [{ column, from }] }` → OR of `column >= from` (null `from`s left out). For a procedure: `{ from, to, fromParam, toParam }`, passed as parameters. A window with none of `column`, `columns`, `fromParam`, `toParam` is treated as no window. |
 | `where` | Raw SQL condition, ANDed with the window in parentheses, run on the source. Not parameterised. Ignored for `mode: 'procedure'`. |
+| `staged` | `true`: write into `<targetTable>__xeplr_staging` and move it into the target in one transaction at the end (see [Staged loads](#staged-loads)). DuckDB targets only. Default `false`. |
 | `movementId` | Correlation key. Default `system.occurrenceId`, else `mv_<id>`. |
 | `batchSize`, `concurrency` | Default 5000 and 4. |
 
@@ -185,9 +186,10 @@ await actions.uploader.upload({
   batchSize: 5000, firstBatchScanRows: 1000,
   metaStore, mtId1, mtId2, mtId3, mtId4, details,
   errorTable, batchDir, keepBatchFiles, onProgress,
-  signal                  // optional AbortSignal: stop on request
+  signal,                 // optional AbortSignal: stop on request
+  staged                  // optional: see Staged loads
 })
-// → { movementId, tables: { main, errors }, columns, totalRows, totalBatches, completed, dropped, aborted, durationMs }
+// → { movementId, tables: { main, errors }, columns, totalRows, totalBatches, completed, dropped, aborted, merged, durationMs }
 ```
 
 `onProgress({ rowsRead, batches, rowsWritten, phase? })` fires after each batch is read, with `rowsWritten` from the write queue's own count, so a caller can show both and see whether writing keeps up. After the read, while the queue drains, it fires again each time the written count moves (`phase: 'writing'`), never on a bare timer, so a stuck write goes quiet.
@@ -208,6 +210,18 @@ Logical types and what each driver creates:
 | object / array | JSONB | JSON | NVARCHAR(MAX) | JSON |
 
 Inference (`inferColumns`): any array → `array`; any object → `object`; all `Date` or ISO-date strings → `datetime`; all booleans → `boolean`; all numbers → `number`; anything else, or all null → `string`.
+
+### Staged loads
+
+With `staged: true` a load **never writes into its target while it runs**. Batches land in `<targetTable>__xeplr_staging` (made empty, shaped like the target, at the start). When every batch is in, one transaction moves them into the target and writes a row to `__xeplr_loads` (`movement_id`, `target_table`, `inserted`, `replaced`, `committed_at`); then the staging table is dropped. `merged` in the result is `{ inserted, replaced }`; `onProgress` reports `phase: 'merging'` just before the move.
+
+- **Stopped, failed, aborted or killed before the move**: the target is untouched. The staging table is dropped (or, after a crash, by the next load's start). Undoing it costs what the load wrote, never what the target holds; there is nothing to roll back.
+- **Crash during the move**: the transaction is discarded on reopen and the target is as it was.
+- **Did it land?** `uploader.wasCommitted({ driver, connection, movementId })` reads the ledger row, written in the same transaction as the move: a row means it landed, `null` means nothing did. No scan of the target.
+- **Upsert** replaces target rows whose key is staged (`DELETE … USING` staging, then `INSERT`). Within one load the last row staged for a key wins, as under `ON CONFLICT DO UPDATE`; rows with a NULL key match nothing and are kept. **No unique index**: a staged load drops `<targetTable>_upsert_uniq` and never creates it. DuckDB's DELETE through an index that a killed load left out of step with its rows fails with "Failed to delete all rows from index", and that failure invalidates the whole database.
+- **Cost** is one statement at the end. Measured with 50 lakh staged rows into 50 crore: append 0.3 s (independent of the target's size), upsert 0.4–7 s depending on how widely the replaced keys are spread.
+
+A driver opts in by implementing `prepareStaging`, `mergeStaged`, `dropStaging` and `committedMovement`; `upload` refuses `staged` for one that does not.
 
 `uploader.rollback({ movementId, driver, connection, targetTable, metaStore?, queue? })` aborts the movement's queued work, deletes its rows from the target and error tables by `__xeplr_movement_id__` / `movement_id`, and records `rolled-back`.
 
@@ -290,6 +304,7 @@ await driver.query(pool, userSql, params)          // reads only
 | `db-fetch` streams to disk by default; `streaming_mode: false` only for small reads. | Bounded memory at both ends for cross-engine replication. |
 | **Half-open windows** (`from <= x < to`), no +1 second. | Consecutive windows meet exactly; closed windows move the boundary row twice. |
 | `db-move` `upsert` without `primaryKeys` is refused, not downgraded to append. | A silent append is a duplicate every run, found a week later. |
+| A **staged** load touches its target only in one transaction at the end, and keeps no unique index. | Undoing a stopped load must cost what it wrote, not a rebuild of the table it was adding to; and a DELETE through a damaged DuckDB index invalidates the database. |
 | `replace` truncates before reading; on failure the target stays empty. | Accepted trade against keeping a second copy of the data. |
 | A procedure call with a window but no `fromParam`/`toParam` is refused (`db-procedure`, and the shared builder `db-move` uses). | A procedure cannot be filtered from outside; dropping the window would reprocess its whole history every run while reporting success. |
 | `db-move` uses the source table's declared types for `mode: 'table'`. | Inference is lossy: Postgres `numeric` arrives as a string and would create a TEXT column; an all-null sample becomes text; `'007'` loses its zeros. |
@@ -316,7 +331,7 @@ node --test test/uploader/reconcile.test.js
 | needs nothing | needs a database |
 |---|---|
 | `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, so `@xeplr/db` must be resolvable) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js`, `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
-| `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
+| `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
 | | SQL Server `localhost:1433` (`MSSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mssql-integration.test.js` |
 | | Postgres + MySQL + SQL Server (`PG_*`, `MYSQL_*`, `MSSQL_*`): `test/builtins/db-replication.test.js` |
 
