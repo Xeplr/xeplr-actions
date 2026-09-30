@@ -115,7 +115,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `dbListViews` | `db-list-views` | `{ views }`. |
 | `dbListProcedures` | `db-list-procedures` | `{ procedures }` (functions excluded). |
 | `dbListColumns` | `db-list-columns` | `{ columns }` — name and data type for one table. |
-| `fileUpload` | `file-upload` | Read a file (`sourceType`, `sourcePath`), parse it (`format`), load it into `targetTable` (`dbType`, `dbConnection`). |
+| `fileUpload` | `file-upload` | Read a file (`sourceType`, `sourcePath`), parse it (`format`), load it into `targetTable` (`dbType`, `dbConnection`). Passes `system.onProgress` (`{ rowsRead, batches, rowsWritten }`, per batch) and `system.signal` (stop) to the uploader, as `db-move` does. |
 | `sendEmail` | `email-send` | Send one message. See [Email](#email). |
 | `emailRead` | `email-read` | List messages, newest first, with `unread_only`, `limit` (1–1000, default 50), `since`, `from_equals`, `from_contains`, `subject_contains`, `body: 'full' \| 'text' \| 'none'`, optional NDJSON spooling. |
 | `emailMove` | `email-move` | Move a message (`messageId`, `folder`) to `toFolder`. |
