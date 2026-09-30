@@ -24,7 +24,7 @@ Everything else is an **optional peer**, required only when an action actually u
 | `unzipper`, `saxes` | `format: 'excel'` (.xlsx) |
 | `imapflow` | every inbound email action |
 | `mailparser` | `email-read` (unless `body: 'none'`), `email-download-attachments` |
-| `nodemailer` | `email-send` with its own connection |
+| `nodemailer` (^10.0.13 — up to 10.0.5 has high-severity advisories) | `email-send` with its own connection |
 | `@xeplr/email` | `email-send` with `templateName` |
 | `knex` | the knex meta store |
 | `mongodb`, `ssh2-sftp-client`, `exceljs` | declared, but their drivers/sources are not implemented |
