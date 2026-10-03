@@ -80,9 +80,13 @@ test('a staged upsert replaces matching keys, with no index, on a table that had
   var src = path.join(dir, 's.duckdb'), dst = path.join(dir, 'd.duckdb');
   try {
     await sql(src, "CREATE TABLE orders AS SELECT i::BIGINT AS id, 'old' AS v FROM range(1000) r(i)");
-    // Unstaged first: the old way, which creates the unique index.
-    await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_old', writeMode: 'upsert', primaryKeys: ['id'], staged: false }) });
-    assert.strictEqual(await count(dst, "SELECT count(*) AS n FROM duckdb_indexes() WHERE table_name = 'orders_copy'"), 1);
+    // A copy from before the rule: loaded, with the old unique index on it.
+    // Made with keepIndexes, the only way to make one now.
+    await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_old', writeMode: 'upsert', primaryKeys: ['id'] }) });
+    var old = await duck.connect({ file: dst, access: 'rw', keepIndexes: true });
+    await duck.query(old, 'CREATE UNIQUE INDEX orders_copy_upsert_uniq ON orders_copy (id)', []);
+    assert.strictEqual(Number((await duck.query(old, "SELECT count(*) AS n FROM duckdb_indexes() WHERE table_name = 'orders_copy'", [])).rows[0].n), 1);
+    await duck.close(old);
 
     await sql(src, "DROP TABLE orders; CREATE TABLE orders AS SELECT (i + 500)::BIGINT AS id, 'new' AS v FROM range(1000) r(i)");
     var out = await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_new', writeMode: 'upsert', primaryKeys: ['id'] }) });

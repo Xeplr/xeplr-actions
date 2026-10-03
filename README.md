@@ -131,7 +131,7 @@ The db actions `db-fetch`, `db-push` and `db-procedure` accept a connection two 
 - `connectionInfoId` (+ `dbInfoId`) — ids of a saved connection. The action does not resolve these; a host does, before `runAction` (e.g. `@xeplr/jobs` `resolveConnection`, which turns `connectionInfoId` into `connection` and `dbType`).
 - `connection: { host, port, user, password, database }` and `dbType` — literal, for scripts, tests and callers with no host.
 
-`db-move` takes literal `sourceConnection` / `targetConnection`; `file-upload` takes `dbConnection`. A DuckDB connection is `{ file, access?: 'ro' | 'rw', openTimeoutMs?: 60000, maxConnections?: 4 }`.
+`db-move` takes literal `sourceConnection` / `targetConnection`; `file-upload` takes `dbConnection`. A DuckDB connection is `{ file, access?: 'ro' | 'rw', openTimeoutMs?: 60000, maxConnections?: 4, keepIndexes?: false }` (see [A written DuckDB file keeps no index](#a-written-duckdb-file-keeps-no-index)).
 
 ### db-move
 
@@ -142,7 +142,7 @@ The db actions `db-fetch`, `db-push` and `db-procedure` accept a connection two 
 | `writeMode` | `append` (default), `replace` (TRUNCATE the target first if it exists, DELETE if TRUNCATE fails), `upsert` (**requires** `primaryKeys`). |
 | `window` | `{ column, from, to }` → `column >= from AND column < to` (a null edge is left out). `{ columns: [{ column, from }] }` → OR of `column >= from` (null `from`s left out). For a procedure: `{ from, to, fromParam, toParam }`, passed as parameters. A window with none of `column`, `columns`, `fromParam`, `toParam` is treated as no window. |
 | `where` | Raw SQL condition, ANDed with the window in parentheses, run on the source. Not parameterised. Ignored for `mode: 'procedure'`. |
-| `staged` | `true`: write into `<targetTable>__xeplr_staging` and move it into the target in one transaction at the end (see [Staged loads](#staged-loads)). DuckDB targets only. Default `false`. |
+| `staged` | `true`: write into `<targetTable>__xeplr_staging` and move it into the target in one transaction at the end (see [Staged loads](#staged-loads)). DuckDB targets only. Default `false`, except that **every DuckDB upsert is staged** whatever this says. |
 | `movementId` | Correlation key. Default `system.occurrenceId`, else `mv_<id>`. |
 | `batchSize`, `concurrency` | Default 5000 and 4. |
 
@@ -245,7 +245,7 @@ await actions.uploader.upload({
 
 `signal` (an `AbortSignal`, passed to db-move as `system.signal`) stops a running movement: the writes still queued are dropped at once (in-flight ones settle), the read stops at the next batch, and it ends with an error whose `code` is `'STOPPED'` (the runner keeps `error.code`), neither a failure nor a success. What it wrote stays, under its `movementId`, for the caller to roll back or keep.
 
-Rows are spooled to NDJSON files on disk between source and database. From the first batch it creates, if missing: the target table, `<targetTable>_import_errors` (`movement_id`, `row_num`, `error_description`, `underlying_sql`, `raw_row`, `recorded_at`), a `__xeplr_movement_id__` column, and a unique index on `primaryKeys`. Server dialects also add `__xeplr_id__`; DuckDB does not.
+Rows are spooled to NDJSON files on disk between source and database. From the first batch it creates, if missing: the target table, `<targetTable>_import_errors` (`movement_id`, `row_num`, `error_description`, `underlying_sql`, `raw_row`, `recorded_at`), a `__xeplr_movement_id__` column, and a unique index on `primaryKeys` (not on DuckDB: its upserts are staged and keep none). Server dialects also add `__xeplr_id__`; DuckDB does not.
 
 Logical types and what each driver creates:
 
@@ -270,7 +270,19 @@ With `staged: true` a load **never writes into its target while it runs**. Batch
 - **Upsert** replaces target rows whose key is staged (`DELETE … USING` staging, then `INSERT`). Within one load the last row staged for a key wins, as under `ON CONFLICT DO UPDATE`; rows with a NULL key match nothing and are kept. **No unique index**: a staged load drops `<targetTable>_upsert_uniq` and never creates it. DuckDB's DELETE through an index that a killed load left out of step with its rows fails with "Failed to delete all rows from index", and that failure invalidates the whole database.
 - **Cost** is one statement at the end. Measured with 50 lakh staged rows into 50 crore: append 0.3 s (independent of the target's size), upsert 0.4–7 s depending on how widely the replaced keys are spread.
 
-A driver opts in by implementing `prepareStaging`, `mergeStaged`, `dropStaging` and `committedMovement`; `upload` refuses `staged` for one that does not.
+A driver opts in by implementing `prepareStaging`, `mergeStaged`, `dropStaging` and `committedMovement`; `upload` refuses `staged` for one that does not. A driver that sets `stagesUpserts: true` (DuckDB) has every upsert staged, asked or not.
+
+### A written DuckDB file keeps no index
+
+DuckDB 1.5.4–1.5.6 has a bug ([duckdb/duckdb#26106](https://github.com/duckdb/duckdb/issues/26106), open upstream): when a process dies with rows still only in the WAL, the next open replays them into the table and the next checkpoint drops them from every index on it. The first `DELETE` that reaches one fails with *"Failed to delete all rows from index"*, which is **FATAL**: the whole file is unusable until the process restarts. Any index, unique or not. A table with no index is unaffected.
+
+So the DuckDB driver, on every **read-write** open of a file:
+
+1. runs `CHECKPOINT` first, which folds a replayed WAL in safely before anything touches it (the upstream workaround);
+2. **drops every index** in the file, logging which, so one left from before this rule cannot be what a later crash breaks;
+3. **refuses `CREATE INDEX`** on that pool from then on (`ensureUpsertIndex` included).
+
+Upserts need no index: they are staged and match keys in the move. A read-only open changes nothing. `keepIndexes: true` turns 2 and 3 off, only for a file that is never written after its index exists; `:memory:` is exempt, having no WAL to replay. `test/duckdb-index-guard.test.js` kills a real writer process to bring the failure about, proves it still happens on the pinned DuckDB, and proves each step above prevents it.
 
 `uploader.rollback({ movementId, driver, connection, targetTable, metaStore?, queue? })` aborts the movement's queued work, deletes its rows from the target and error tables by `__xeplr_movement_id__` / `movement_id`, and records `rolled-back`.
 
@@ -380,7 +392,7 @@ node --test test/uploader/reconcile.test.js
 | needs nothing | needs a database |
 |---|---|
 | `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, so `@xeplr/db` must be resolvable) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js`, `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
-| `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
+| `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/duckdb-index-guard.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
 | | SQL Server `localhost:1433` (`MSSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mssql-integration.test.js` |
 | | Postgres + MySQL + SQL Server (`PG_*`, `MYSQL_*`, `MSSQL_*`): `test/builtins/db-replication.test.js` |
 

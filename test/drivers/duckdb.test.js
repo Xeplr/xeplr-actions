@@ -82,9 +82,12 @@ test('creates a table and round-trips every logical type', async function() {
   assert.equal(r.rows[1].is_paid, false);
 });
 
-test('upserts on the primary key rather than duplicating', async function() {
+test('upserts on the primary key rather than duplicating (ON CONFLICT, where an index is allowed)', async function() {
   var t = tempTable();
   var cols = [{ name: 'k', type: 'string' }, { name: 'v', type: 'number' }];
+  // A written file refuses indexes (see guard.test.js); the uploader stages
+  // DuckDB upserts instead. The ON CONFLICT path stays for an in-memory file.
+  var pool = await driver.connect({ file: ':memory:', access: 'rw' });
 
   await driver.query(pool, driver.buildCreateTableSql(t, cols, ['k']));
   await driver.ensureUpsertIndex(pool, t, ['k']);
@@ -101,6 +104,7 @@ test('upserts on the primary key rather than duplicating', async function() {
   // The movement id always moves with the update — otherwise rollback would
   // miss a row the latest movement actually changed.
   assert.equal(r.rows[0].m, 'mv-2');
+  await driver.close(pool);
 });
 
 test('adds a column to an existing table, idempotently', async function() {
