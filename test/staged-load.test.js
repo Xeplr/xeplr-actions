@@ -145,16 +145,15 @@ test('replaceFrom: the target\'s rows from a date on are replaced by the staged 
   try {
     // Ten days, ten rows a day, a DATE with no time — the case this is for.
     await sql(src, "CREATE TABLE orders AS SELECT i::BIGINT AS id, DATE '2026-09-21' + (i // 10)::INTEGER AS day, 'v1' AS v FROM range(100) r(i)");
-    var first = await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_w1', replaceFrom: { column: 'day', from: null } }) });
+    var first = await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_w1', replaceFrom: { column: 'day' } }) });
     assert.strictEqual(first.status, 'success', JSON.stringify(first.error));
     assert.strictEqual(await count(dst, 'SELECT count(*) AS n FROM orders_copy'), 100, 'a first load deletes nothing and brings everything');
 
     // The source's last three days change: one row gone, every other row re-stamped.
     await sql(src, "DELETE FROM orders WHERE id = 95; UPDATE orders SET v = 'v2' WHERE day >= DATE '2026-09-28'");
-    var cutoff = new Date(Date.UTC(2026, 8, 28));
     var again = await runAction({ action: dbMove, input: move(src, dst, {
       movementId: 'mv_w2', mode: 'query', table: null, sql: "SELECT * FROM orders WHERE day >= DATE '2026-09-28'",
-      replaceFrom: { column: 'day', from: cutoff } }) });
+      replaceFrom: { column: 'day' } }) });
     assert.strictEqual(again.status, 'success', JSON.stringify(again.error));
     assert.deepStrictEqual(again.output.merged, { inserted: 29, replaced: 30 });
     assert.strictEqual(await count(dst, 'SELECT count(*) AS n FROM orders_copy'), 99, 'no day duplicated, and the deleted row is gone');
@@ -163,12 +162,25 @@ test('replaceFrom: the target\'s rows from a date on are replaced by the staged 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('replaceFrom: a read that brought nothing deletes nothing', async function() {
+  var dir = scratch('windowempty');
+  var src = path.join(dir, 's.duckdb'), dst = path.join(dir, 'd.duckdb');
+  try {
+    await sql(src, "CREATE TABLE orders AS SELECT i::BIGINT AS id, DATE '2026-09-21' + (i // 10)::INTEGER AS day FROM range(50) r(i)");
+    await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_e1', replaceFrom: { column: 'day' } }) });
+    var none = await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_e2', mode: 'query', table: null,
+      sql: "SELECT * FROM orders WHERE day >= DATE '2027-01-01'", replaceFrom: { column: 'day' } }) });
+    assert.strictEqual(none.status, 'success', JSON.stringify(none.error));
+    assert.strictEqual(await count(dst, 'SELECT count(*) AS n FROM orders_copy'), 50);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('replaceFrom with primaryKeys is refused: it replaces a range, not keys', async function() {
   var dir = scratch('windowkeys');
   var src = path.join(dir, 's.duckdb'), dst = path.join(dir, 'd.duckdb');
   try {
     await sql(src, "CREATE TABLE orders AS SELECT i::BIGINT AS id, DATE '2026-09-21' AS day FROM range(10) r(i)");
-    var out = await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_wk', writeMode: 'upsert', primaryKeys: ['id'], replaceFrom: { column: 'day', from: null } }) });
+    var out = await runAction({ action: dbMove, input: move(src, dst, { movementId: 'mv_wk', writeMode: 'upsert', primaryKeys: ['id'], replaceFrom: { column: 'day' } }) });
     assert.strictEqual(out.status, 'failed');
     assert.match(String(out.error && out.error.message), /takes no primaryKeys/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
