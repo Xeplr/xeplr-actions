@@ -142,6 +142,7 @@ The db actions `db-fetch`, `db-push` and `db-procedure` accept a connection two 
 | `writeMode` | `append` (default), `replace` (TRUNCATE the target first if it exists, DELETE if TRUNCATE fails), `upsert` (**requires** `primaryKeys`). |
 | `window` | `{ column, from, to }` → `column >= from AND column < to` (a null edge is left out). `{ columns: [{ column, from }] }` → OR of `column >= from` (null `from`s left out). For a procedure: `{ from, to, fromParam, toParam }`, passed as parameters. A window with none of `column`, `columns`, `fromParam`, `toParam` is treated as no window. |
 | `where` | Raw SQL condition, ANDed with the window in parentheses, run on the source. Not parameterised. Ignored for `mode: 'procedure'`. |
+| `replaceFrom` | `{ column, from }` with `staged`: the final move deletes target rows where `column >= from` before inserting the staged ones — see [Staged loads](#staged-loads). |
 | `staged` | `true`: write into `<targetTable>__xeplr_staging` and move it into the target in one transaction at the end (see [Staged loads](#staged-loads)). DuckDB targets only. Default `false`, except that **every DuckDB upsert is staged** whatever this says. |
 | `movementId` | Correlation key. Default `system.occurrenceId`, else `mv_<id>`. |
 | `batchSize`, `concurrency` | Default 5000 and 4. |
@@ -268,6 +269,7 @@ With `staged: true` a load **never writes into its target while it runs**. Batch
 - **Crash during the move**: the transaction is discarded on reopen and the target is as it was.
 - **Did it land?** `uploader.wasCommitted({ driver, connection, movementId })` reads the ledger row, written in the same transaction as the move: a row means it landed, `null` means nothing did. No scan of the target.
 - **Upsert** replaces target rows whose key is staged (`DELETE … USING` staging, then `INSERT`). Within one load the last row staged for a key wins, as under `ON CONFLICT DO UPDATE`; rows with a NULL key match nothing and are kept. **No unique index**: a staged load drops `<targetTable>_upsert_uniq` and never creates it. DuckDB's DELETE through an index that a killed load left out of step with its rows fails with "Failed to delete all rows from index", and that failure invalidates the whole database.
+- **A range** (`replaceFrom: { column, from }`, staged append only, no `primaryKeys`) replaces the target's rows with `column >= from` by the staged ones, in the same one transaction: *re-load the last N days*, for a table with no key or a date with no time, where reading "past the latest" would duplicate today on every run. `from: null` (a first load) deletes nothing. A `Date` compares as a UTC timestamp, so a `DATE` column works. `merged.replaced` is the rows deleted.
 - **Cost** is one statement at the end. Measured with 50 lakh staged rows into 50 crore: append 0.3 s (independent of the target's size), upsert 0.4–7 s depending on how widely the replaced keys are spread.
 
 A driver opts in by implementing `prepareStaging`, `mergeStaged`, `dropStaging` and `committedMovement`; `upload` refuses `staged` for one that does not. A driver that sets `stagesUpserts: true` (DuckDB) has every upsert staged, asked or not.
