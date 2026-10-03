@@ -114,7 +114,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `dbListTables` | `db-list-tables` | `{ tables }` — base tables in a schema/database. |
 | `dbListViews` | `db-list-views` | `{ views }`. |
 | `dbListProcedures` | `db-list-procedures` | `{ procedures }` (functions excluded). |
-| `dbListColumns` | `db-list-columns` | `{ columns }` — name and data type for one table. |
+| `dbListColumns` | `db-list-columns` | `{ columns }` — `name`, `dataType`, `udtName` and `maxLength` (characters; `-1` is SQL Server `(max)`, `null` when it has none) for one table. |
 | `fileUpload` | `file-upload` | Read a file (`sourceType`, `sourcePath`), parse it (`format`), load it into `targetTable` (`dbType`, `dbConnection`). Passes `system.onProgress` (`{ rowsRead, batches, rowsWritten }`, per batch) and `system.signal` (stop) to the uploader, as `db-move` does. |
 | `sendEmail` | `email-send` | Send one message. See [Email](#email). |
 | `emailRead` | `email-read` | List messages, newest first, with `unread_only`, `limit` (1–1000, default 50), `since`, `from_equals`, `from_contains`, `subject_contains`, `body: 'full' \| 'text' \| 'none'`, optional NDJSON spooling. |
@@ -392,7 +392,7 @@ node --test test/uploader/reconcile.test.js
 | needs nothing | needs a database |
 |---|---|
 | `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, so `@xeplr/db` must be resolvable) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js`, `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
-| `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/duckdb-index-guard.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
+| `test/list-columns-length.test.js` (`XEPLR_TEST_PG_URL`, `MYSQL_TEST_URL`, `MSSQL_TEST_URL`; each skipped when unset), `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/duckdb-index-guard.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
 | | SQL Server `localhost:1433` (`MSSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mssql-integration.test.js` |
 | | Postgres + MySQL + SQL Server (`PG_*`, `MYSQL_*`, `MSSQL_*`): `test/builtins/db-replication.test.js` |
 
