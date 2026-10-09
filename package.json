@@ -16,7 +16,11 @@
     "http",
     "db",
     "file",
-    "email"
+    "email",
+    "export",
+    "csv",
+    "xlsx",
+    "pdf"
   ],
   "author": "xeplr",
   "license": "MIT",
@@ -28,15 +32,17 @@
     "access": "public"
   },
   "dependencies": {
-    "@xeplr/schema-handler": "^1.0.0",
-    "@xeplr/expression-handler": "^2.0.0"
+    "@xeplr/expression-handler": "^2.0.0",
+    "@xeplr/schema-handler": "^1.0.0"
   },
   "peerDependencies": {
     "@duckdb/node-api": "1.5.5-r.3",
     "@xeplr/email": "^1.0.0",
     "@xeplr/utils": "^1.0.0",
     "csv-parse": "^7.0.2",
+    "dejavu-fonts-ttf": "^2.37.3",
     "exceljs": "^4.0.0",
+    "fflate": "^0.8.2",
     "imapflow": "^1.0.0",
     "knex": "^3.0.0",
     "mailparser": "^3.0.0",
@@ -44,6 +50,7 @@
     "mssql": "^11.0.0",
     "mysql2": "^3.0.0",
     "nodemailer": "^10.0.13",
+    "pdfkit": "^0.20.2",
     "pg": "^8.0.0",
     "saxes": "^6.0.0",
     "ssh2-sftp-client": "^11.0.0",
@@ -97,15 +104,27 @@
     },
     "@xeplr/email": {
       "optional": true
+    },
+    "fflate": {
+      "optional": true
+    },
+    "pdfkit": {
+      "optional": true
+    },
+    "dejavu-fonts-ttf": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@duckdb/node-api": "^1.5.5-r.3",
     "@xeplr/utils": "^1.0.0",
     "csv-parse": "^7.0.2",
+    "dejavu-fonts-ttf": "^2.37.3",
     "express": "^4.0.0",
+    "fflate": "^0.8.3",
     "mssql": "^12.7.0",
     "mysql2": "^3.23.1",
+    "pdfkit": "^0.20.2",
     "pg": "^8.0.0",
     "saxes": "^6.0.0",
     "unzipper": "^0.12.0"

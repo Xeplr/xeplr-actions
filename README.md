@@ -107,6 +107,8 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | key | action name | does |
 |---|---|---|
 | `dataOperation` | `data-operation` | From a list of rows, make the list the next step needs — keep some rows, pick and rename columns, compute new ones, sort, optionally render. See [Data operation](#data-operation). |
+| `exportTable` | `export-table` | Rows to a **CSV, Excel (.xlsx) or PDF** file. See [Export](#export). |
+| `exportPages` | `export-pages` | Pages of placed blocks (text, tables, images, shapes) to a PDF — a dashboard as it looked. See [Export](#export). |
 | `dbFetch` | `db-fetch` | Stream rows from a table (`mode: 'table'`) or SQL (`mode: 'query'`, `params`). Default `streaming_mode: true` → NDJSON file `{ filePath, format: 'jsonl', bytes, rows }`; `false` → `{ rows, rowCount }`. |
 | `dbPush` | `db-push` | Write `rows` or an NDJSON `filePath` into `targetTable` through the uploader. `primaryKeys` → upsert. |
 | `dbMove` | `db-move` | One window of rows from a source table, query or procedure into a target table in one streamed pass. See [db-move](#db-move). |
@@ -219,6 +221,48 @@ should not take the other eight hundred and ninety-nine with it.
 
 **No aggregation.** `group by status, count` changes what a row *is*; that is
 a different shape and, when it is wanted, a different step.
+
+## Export
+
+`export-table` writes rows that arrive **already presented**: which columns, in what order, under what heading, and for each cell its raw value and the text a reader saw. The action knows nothing of reports or pivots; the caller decides all that (in xeplr-bi, `report-engine`'s `presentTable` does). Each format takes what it needs:
+
+| format | writes | from |
+|---|---|---|
+| `csv` | RFC 4180; a UTF-8 byte-order mark so Excel reads `₹` and accents; a text cell starting with `= + - @` gets a leading `'` (no formula injection; numbers untouched) | `values` |
+| `xlsx` | numbers and dates as **real typed cells carrying the column's Excel number format** (`"₹"#,##0.00`, `0.0%`, `mmm yyyy`, `#,##0.0,,"M"`), so the sheet looks like the screen and still sums; an optional title and subtitle; a bold, frozen header with an autofilter; bold subtotals and a tinted total row; column widths from the first 200 rows. Excel's 1,048,576-row limit is respected (`truncated`) | `values` |
+| `pdf` | each cell exactly as displayed, numbers right-aligned by `align`, header repeated on every page, landscape past 6 columns, "Page x of y", bold or tinted total rows. Capped at 5,000 rows (`maxRows`) with a closing note | `display` |
+
+```js
+await runAction(builtins.exportTable, {
+  format: 'xlsx',
+  document: {
+    title: 'Sales by region', subtitle: 'Date: Current financial year',
+    columns: [
+      { header: 'Region' },
+      { header: 'Month', kind: 'date', numFmt: 'mmm yyyy' },
+      { header: 'Revenue', kind: 'number', numFmt: '"₹"#,##0.00', align: 'right' }
+    ]
+  },
+  rows: [{ values: ['North', '2024-01-01', 1234.5], display: ['North', 'Jan 2024', '₹1,234.50'], kind: 'detail' }]
+  // or rowsFile: an NDJSON file, one row per line — streamed, never held
+})
+// → { filePath, fileName, contentType, bytes, rows, truncated }
+```
+
+- **Streaming.** CSV and Excel stream rows to disk, from `rows` or from `rowsFile` (NDJSON, one row per line, as `streaming.spool` writes it); 200,000 rows to xlsx take about 2 s in flat memory. Our own xlsx writer runs on `fflate`. `exceljs` was rejected: it pulls a `uuid` with a published advisory and has had no release since December 2024.
+- **Fonts.** pdfkit's built-in fonts cannot draw `₹` or non-Latin text; a missing glyph draws as nothing. The PDF embeds **DejaVu Sans Condensed** (the `dejavu-fonts-ttf` peer). Pass `document.font` / `boldFont` (TTF/OTF paths) for scripts it lacks. Only the glyphs used are embedded.
+- **Output** goes to `outputPath`, or to a new directory under `XEPLR_ACTIONS_TMP_DIR` with a file named after the title. A failed export leaves no half-written file.
+
+`export-pages` lays out `pages: [{ blocks }]`, each block positioned by **fractions** of the page's content box (A4 landscape by default):
+- `text` (`text`, `size`, `bold`, `color`, `align`)
+- `table` (`title`, `columns`, `rows`; drawn inside its box, and rows that don't fit are counted as "+N more rows")
+- `image` (`src` must be a **PNG or JPEG data URL**: no fetching, no SVG, no markup)
+- `rect` (`fill`, `stroke`, `radius`)
+- `line`
+
+What it is given is assumed to come from a browser, so it is bounded: 50 pages, 200 blocks a page, 8 MB per image, 500 table rows, and 5,000 characters of text. An image that will not decode draws a note in its box instead of failing the whole file.
+
+Peers (optional, needed only by the format used): `fflate` for xlsx; `pdfkit` and `dejavu-fonts-ttf` for pdf. `writers` (`getWriter`, `INFO`, `SUPPORTED`) is exported for code that wants a writer without the action.
 
 ## Uploader
 
