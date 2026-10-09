@@ -49,7 +49,7 @@ test('creates a table and round-trips every logical type', async function() {
 
   var ins = driver.buildInsertSql(t, [
     { order_id: 'A1', region: 'IN', revenue: 100.5, is_paid: true,
-      ordered_at: new Date('2026-01-05T10:00:00Z'), order_day: new Date(2026, 0, 5),
+      ordered_at: new Date('2026-01-05T10:00:00Z'), order_day: new Date(Date.UTC(2026, 0, 5)),
       meta: { source: 'web' } },
     { order_id: 'A2', region: 'US', revenue: '250', is_paid: 'no',
       ordered_at: '2026-01-06T11:30:00Z', order_day: '2026-01-06', meta: null }
@@ -69,11 +69,12 @@ test('creates a table and round-trips every logical type', async function() {
   assert.equal(a1.is_paid, true);
   assert.equal(a1.__xeplr_movement_id__, 'mv-1');
 
-  // A date must NOT drift a day. This is the whole reason toDateOnly exists:
-  // a Date holding local 2026-01-05 becomes 2026-01-04 via toISOString()
-  // anywhere east of Greenwich, and this test only catches that when it runs
-  // in a non-UTC zone — so it is asserted on the UTC calendar date rather than
-  // on String(date), which renders in the runner's zone and passes either way.
+  // A date must NOT drift a day. A Date given for a `date` is read by its UTC
+  // day (dateValues.js) — every driver hands one over as midnight UTC — never
+  // in this machine's zone, which is what moved it a day west of UTC. Asserted
+  // on the UTC calendar date rather than on String(date), which renders in the
+  // runner's zone and passes either way. dates-across-zones.test.js runs the
+  // real moves under two zones.
   assert.equal(new Date(a1.order_day).toISOString().slice(0, 10), '2026-01-05');
   assert.equal(new Date(r.rows[1].order_day).toISOString().slice(0, 10), '2026-01-06');
 

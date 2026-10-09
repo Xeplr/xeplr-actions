@@ -300,8 +300,19 @@ Logical types and what each driver creates:
 | number | NUMERIC | DECIMAL(38,10) | DECIMAL(38,10) | DOUBLE |
 | boolean | BOOLEAN | TINYINT(1) | BIT | BOOLEAN |
 | date | DATE | DATE | DATE | DATE |
-| datetime | TIMESTAMPTZ | DATETIME(6) | DATETIME2 | TIMESTAMPTZ |
+| datetime (an instant) | TIMESTAMPTZ | DATETIME(6), in UTC | DATETIME2, in UTC | TIMESTAMPTZ |
+| localdatetime (no zone) | TIMESTAMP | DATETIME(6) | DATETIME2 | TIMESTAMP |
 | object / array | JSONB | JSON | NVARCHAR(MAX) | JSON |
+
+**Dates and times follow three rules, on every driver** (`lib/drivers/db/dateValues.js`, the one copy):
+
+1. **A `date` is copied as the same day.** MySQL/Postgres/SQL Server `DATE` → `date`.
+2. **A date-time with a zone is copied as the same instant**, stored in UTC. MySQL `TIMESTAMP`, Postgres `timestamptz`, SQL Server `datetimeoffset`, DuckDB `TIMESTAMPTZ` → `datetime`.
+3. **A date-time without a zone is copied as its digits**, `10:00` stays `10:00`, and stays zoneless. MySQL `DATETIME`, Postgres `timestamp`, SQL Server `datetime`/`datetime2`/`smalldatetime`, DuckDB `TIMESTAMP` → `localdatetime`. Which zone it was recorded in is declared where it is used (a cube's source zone), never guessed here.
+
+**Nothing reads the machine's time zone.** The MySQL session is pinned to UTC (`SET time_zone = '+00:00'` on every connection), SQL Server to `useUTC: true` (after the caller's options), Postgres returns `date` and `timestamp` as text, and DuckDB opens with `TimeZone = 'UTC'`. Every JS `Date` is read with `getUTC*`, and a string with no zone is read as UTC, never handed to `new Date()`. `test/dates-across-zones.test.js` moves a real table from each of the three databases into DuckDB with the process in India time and in New York time, and the two must store the same values.
+
+**An existing target column that is zoned but receives a zoneless source column is retyped once** to zoneless, keeping its digits (Postgres and DuckDB; `buildRetypeToLocalDateTimeSql`). Tables created before this rule held those values as instants.
 
 Inference (`inferColumns`): any array → `array`; any object → `object`; all `Date` or ISO-date strings → `datetime`; all booleans → `boolean`; all numbers → `number`; anything else, or all null → `string`.
 
@@ -421,7 +432,7 @@ await driver.query(pool, userSql, params)          // reads only
 | Movement logs carry identifiers, counts, SQL and the error text — never parameter values or row contents; a failed batch shows one row's primary key, not its data. | Logs are copied into tickets and chats. |
 | DuckDB opens **read-only unless the call says `access: 'rw'`**; no environment variable can grant write. A file already open read-only in the process refuses a write. Opening waits on the lock (`openTimeoutMs`, default 60 s). | One read-write process locks every other process out, even readers. Write access belongs at the call site that writes. |
 | **Every DuckDB value comes out plain**, from `query` and `fetchStream` alike: a number, text, boolean, `Date`, array or object, never a BigInt or a DuckDB wrapper object. DECIMAL is a number; DATE and TIMESTAMP are `Date`s; a whole number too big to hold exactly (beyond ±9,007,199,254,740,991) is **text**, never rounded; lists, structs and maps are arrays and objects; TIME, INTERVAL, UUID and any other type are text. `fetchStream` has DuckDB do the conversion inside its engine by wrapping the query (about +3% on a million rows); a query with nothing to convert runs as given. | A streamed read used to hand DECIMAL and TIMESTAMP back as wrapper objects with a BigInt inside, and the first `JSON.stringify` downstream failed with "Do not know how to serialize a BigInt". Text for huge numbers is what the Postgres, MySQL and SQL Server drivers already return. |
-| **A DuckDB timestamp without a zone is read as UTC**; one with a zone keeps its exact instant. | Data is kept in UTC; the viewer's time zone is applied when rendering, never in the driver. |
+| **DuckDB works in UTC** (`TimeZone = 'UTC'` on every instance). A timestamp without a zone is read with its digits in the `Date`'s UTC fields; one with a zone keeps its exact instant. | Left to the machine's zone, `date_trunc('month', …)` of 1 Aug 00:00 UTC on a server in India was 31 Jul 18:30, so August was labelled July, and a filter "to 31 Aug" ended at 30 Aug 18:30. |
 | `meta-store-knex` requires `service` and `applicationId`, and scopes every statement by `applicationId`. | `import_meta` is shared by every app; unattributed rows, or a rollback decided from another app's row, are worse than refusing. |
 | Mail filenames are sanitised (`[^\w.-]` → `_`, all-dot names → `attachment`, max 180 chars) and prefixed with a random id. | Attachment names come from the sender and could escape the output directory; common names collide. |
 | The system mail sender refuses `text`, `bcc`, `from`, `replyTo` rather than dropping them. | A silently lost bcc is a compliance problem found a year later. |

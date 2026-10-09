@@ -40,7 +40,9 @@ test('dataTypeToLogical maps native MySQL types back to logical', function() {
   assert.strictEqual(driver.dataTypeToLogical('LONGTEXT'), 'string');   // case-insensitive
   assert.strictEqual(driver.dataTypeToLogical('bigint'),   'number');
   assert.strictEqual(driver.dataTypeToLogical('decimal'),  'number');
-  assert.strictEqual(driver.dataTypeToLogical('datetime'), 'datetime');
+  // DATETIME has no zone: copied as its digits. TIMESTAMP is an instant.
+  assert.strictEqual(driver.dataTypeToLogical('datetime'), 'localdatetime');
+  assert.strictEqual(driver.dataTypeToLogical('timestamp'), 'datetime');
   assert.strictEqual(driver.dataTypeToLogical('json'),     'object');
   assert.strictEqual(driver.dataTypeToLogical('geometry'), 'string');   // unknown → string
 });

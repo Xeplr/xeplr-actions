@@ -38,7 +38,9 @@ test('dataTypeToLogical maps native SQL Server types back to logical', function(
   assert.strictEqual(driver.dataTypeToLogical('bigint'),    'number');
   assert.strictEqual(driver.dataTypeToLogical('decimal'),   'number');
   assert.strictEqual(driver.dataTypeToLogical('bit'),       'boolean');
-  assert.strictEqual(driver.dataTypeToLogical('datetime2'), 'datetime');
+  // datetime2 has no zone: copied as its digits. datetimeoffset is an instant.
+  assert.strictEqual(driver.dataTypeToLogical('datetime2'), 'localdatetime');
+  assert.strictEqual(driver.dataTypeToLogical('datetimeoffset'), 'datetime');
   assert.strictEqual(driver.dataTypeToLogical('geography'), 'string');   // unknown → string
 });
 
