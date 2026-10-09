@@ -41,6 +41,8 @@ module.exports = {
   streaming:     streaming,
   drivers:       { db: dbDrivers, file: fileDrivers },
   formats:       formats,
+  // { getWriter(type), INFO, SUPPORTED } — csv / xlsx / pdf writers behind export-table.
+  writers:       require('./lib/formats/writers'),
 
   // xeplr_configs — shared control-plane DB (import/movement metadata).
   // One call per app: attachConfig({ service }); await xcfg.ready(). See
