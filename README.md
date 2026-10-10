@@ -348,9 +348,15 @@ Upserts need no index: they are staged and match keys in the move. A read-only o
 | format | reads | notes |
 |---|---|---|
 | `csv` | stream | `formatConfig`: `columns` (default first row), `delimiter` (`,`), `cast` (true), `skipEmptyLines`, `trim`. |
-| `excel` | file path | `.xlsx` via `unzipper` + `saxes`; `sheet`, `startRow`. Date-styled cells arrive as `Date`. |
+| `excel` | file path | `.xlsx` via `unzipper` + `saxes`; `sheet`, `startRow`. Date-styled cells arrive as `Date`. Excel's own escapes in cell text are decoded (`_x000D_` → a real line break; `_x005F_` → `_`), and Japanese phonetic runs (`<rPh>`, furigana) are not joined into the value. |
 | `json` | stream | A JSON array or NDJSON; buffers the whole file. |
 | `txt` | — | Placeholder, not implemented. |
+
+**Rows pasted into one cell** (`lib/formats/pastedRows.js`). Data copied out of an ERP and pasted into Excel: a value starting with `"` (an inch mark) makes Excel put everything up to the next `"` — tabs, line breaks, whole rows — into that one cell. The rows it swallowed exist nowhere else. Seen for real: 465 rows folded into 11 cells.
+- `formats.scanPastedRows(format, filePath, { sheet })` → `{ cells, rows, examples: [{ row, column, rows, first }] }` — found, nothing changed. For an import's inspect step.
+- `formatConfig.repairPastedRows: true` on `file-upload` puts them back: the cell splits on its line breaks into the rest of its own row, whole rows, and the start of the last row, whose remaining values are the merged row's later cells. The eaten quotes go back where they opened and closed. The action's output says what it did: `repairedPastedRows: { cells, rows, at }`.
+- **Only an exact shape is repaired:** the pieces must have the sheet's column counts (and the cells the last row's values would leave empty must be empty). Ordinary multi-line text never matches, so a genuine note with line breaks is never touched. On the client's real file: 11 of 11 cells, 465 of 465 rows, no recovered entry number duplicating an existing one.
+- `pastedRows.decodeOoxml`, `splitPastedRows(rec, headers)`, `expandPastedRows(rows)`, `scanForPastedRows(rows)` for other readers.
 
 File sources: only `local` is implemented (`path`). `sftp`, `sharepoint` and `google` are placeholders.
 
@@ -448,7 +454,7 @@ node --test test/uploader/reconcile.test.js
 
 | needs nothing | needs a database |
 |---|---|
-| `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, so `@xeplr/db` must be resolvable) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js`, `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
+| `test/formats/pasted-rows.test.js` (its last case loads into Postgres when `PG_HOST`/`PG_PORT`/`PG_USER`/`PG_PASSWORD`/`PG_DATABASE` are set, else skipped), `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, so `@xeplr/db` must be resolvable) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js`, `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
 | `test/list-columns-length.test.js` (`XEPLR_TEST_PG_URL`, `MYSQL_TEST_URL`, `MSSQL_TEST_URL`; each skipped when unset), `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/duckdb-index-guard.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
 | | SQL Server `localhost:1433` (`MSSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mssql-integration.test.js` |
 | | Postgres + MySQL + SQL Server (`PG_*`, `MYSQL_*`, `MSSQL_*`): `test/builtins/db-replication.test.js` |
