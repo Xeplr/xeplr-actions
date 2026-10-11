@@ -13,8 +13,10 @@ var actions   = require('../../index');
 var driver    = require('../../lib/drivers/db/postgres');
 var fileUpload = require('../../lib/builtins/file/upload');
 
+// The test Postgres; PG_HOST/PG_PORT/PG_USER/PG_PASSWORD point it elsewhere.
 var CONN = {
-  host: 'localhost', port: 5435, user: 'postgres',
+  host: process.env.PG_HOST || 'localhost', port: Number(process.env.PG_PORT || 5435),
+  user: process.env.PG_USER || 'postgres',
   password: process.env.PG_PASSWORD || 'postgres', database: 'xeplr_actions_test'
 };
 var pool = null;
@@ -106,4 +108,47 @@ test('actions.uploader.inferColumns works the same way (organized namespace)', a
 test('mixed-type column falls back to string (text wins)', async function() {
   var cols = actions.inferColumns([{ x: 1 }, { x: 'two' }, { x: 3 }]);
   assert.strictEqual(cols[0].type, 'string');
+});
+
+test('rows the database refuses land in <table>_import_errors — row number, reason and the row', async function() {
+  var tbl = tempTable();
+  // The target exists already and refuses a negative quantity: those rows
+  // fail, the rest load, and the refused ones must be findable afterwards.
+  await pool.query('CREATE TABLE ' + driver.quoteIdent(tbl) + ' (sku TEXT, qty INTEGER CHECK (qty >= 0))');
+  var lines = ['sku,qty'];
+  for (var i = 1; i <= 50; i++) lines.push('SKU-' + i + ',' + (i === 7 || i === 33 ? -1 : i));
+  var { dir, file } = await writeCsv(lines.join('\n'));
+
+  actions.clear();
+  actions.register(fileUpload);
+  try {
+    var result = await actions.runAction({
+      name: 'file-upload',
+      input: { sourceType: 'local', sourcePath: file, format: 'csv', dbType: 'postgres',
+        dbConnection: CONN, targetTable: tbl, batchSize: 20 }
+    });
+    assert.strictEqual(result.status, 'success', 'runAction failed: ' + (result.error && result.error.message));
+    var out = result.output;
+    assert.strictEqual(out.totalRows, 50);
+    assert.strictEqual(out.completed, 48);
+    assert.strictEqual(out.dropped, 2);
+    assert.deepStrictEqual(out.errorRows, { recorded: 2, notRecorded: 0 });
+
+    var loaded = await pool.query('SELECT count(*)::int AS n FROM ' + driver.quoteIdent(tbl));
+    assert.strictEqual(loaded.rows[0].n, 48);
+
+    var errs = await pool.query('SELECT movement_id, row_num, error_description, raw_row FROM ' +
+      driver.quoteIdent(tbl + '_import_errors') + ' ORDER BY row_num');
+    assert.strictEqual(errs.rows.length, 2);
+    assert.deepStrictEqual(errs.rows.map(function(r) { return r.row_num; }), [7, 33]);
+    assert.deepStrictEqual(errs.rows.map(function(r) { return r.raw_row.sku; }), ['SKU-7', 'SKU-33']);
+    assert.strictEqual(errs.rows[0].raw_row.qty, -1);
+    assert.match(errs.rows[0].error_description, /check constraint/i);
+    assert.match(errs.rows[0].error_description, /\[23514\]/);
+    assert.strictEqual(errs.rows[0].movement_id, out.movementId);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+    await pool.query('DROP TABLE IF EXISTS ' + driver.quoteIdent(tbl + '_import_errors'));
+    await pool.query('DROP TABLE IF EXISTS ' + driver.quoteIdent(tbl));
+  }
 });
