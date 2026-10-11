@@ -341,7 +341,17 @@ test('pre-existing INTEGER column: numeric-string rows land, non-numeric go to e
     assert.strictEqual(got.rows.length, 3);
     assert.strictEqual(Number(got.rows[0].age), 21);
     assert.strictEqual(Number(got.rows[2].age), 99);
-    assert.strictEqual(errorHits.length, 1);   // 'N/A' bisected to error table
+    assert.strictEqual(errorHits.length, 1);   // 'N/A' bisected — the caller's own hook still runs
+    // ...and the refused row is IN the error table, not just counted.
+    assert.deepStrictEqual(result.errorRows, { recorded: 1, notRecorded: 0 });
+    var errs = await driver.query(pool, 'SELECT movement_id, row_num, error_description, raw_row FROM ' +
+      driver.quoteIdent(tbl + '_import_errors'));
+    assert.strictEqual(errs.rows.length, 1);
+    assert.strictEqual(errs.rows[0].movement_id, 'mv_coerce');
+    assert.strictEqual(Number(errs.rows[0].row_num), 3);
+    var raw = errs.rows[0].raw_row;
+    assert.strictEqual((typeof raw === 'string' ? JSON.parse(raw) : raw).age, 'N/A');
+    assert.match(errs.rows[0].error_description, /incorrect integer value/i);
   } finally {
     q.stop();
     await driver.query(pool, 'DROP TABLE IF EXISTS ' + driver.quoteIdent(tbl + '_import_errors'));
