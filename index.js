@@ -37,6 +37,8 @@ module.exports = {
   // their own — e.g. a UI wizard showing inferred columns from a CSV sample
   // before actually committing to an import).
   uploader:      uploader,
+  // The uploader's own tables (_import_errors, __xeplr_staging, __xeplr_loads), to leave out of table pickers.
+  isInternalTable: require('./lib/drivers/db/internalTables').isInternalTable,
   inferColumns:  uploader.inferColumns,
   streaming:     streaming,
   drivers:       { db: dbDrivers, file: fileDrivers },
