@@ -117,7 +117,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `dbListViews` | `db-list-views` | `{ views }`. |
 | `dbListProcedures` | `db-list-procedures` | `{ procedures }` (functions excluded). |
 | `dbListColumns` | `db-list-columns` | `{ columns }` — `name`, `dataType`, `udtName` and `maxLength` (characters; `-1` is SQL Server `(max)`, `null` when it has none) for one table. |
-| `fileUpload` | `file-upload` | Read a file (`sourceType`, `sourcePath`), parse it (`format`), load it into `targetTable` (`dbType`, `dbConnection`). Passes `system.onProgress` (`{ rowsRead, batches, rowsWritten }`, per batch) and `system.signal` (stop) to the uploader, as `db-move` does. |
+| `fileUpload` | `file-upload` | Read a file (`sourceType`, `sourcePath`), parse it (`format`), load it into `targetTable` (`dbType`, `dbConnection`) as a New table, Append or Replace (`mode`, see [Import modes](#import-modes)). Passes `system.onProgress` (`{ rowsRead, batches, rowsWritten }`, per batch) and `system.signal` (stop) to the uploader, as `db-move` does. |
 | `sendEmail` | `email-send` | Send one message. See [Email](#email). |
 | `emailRead` | `email-read` | List messages, newest first, with `unread_only`, `limit` (1–1000, default 50), `since`, `from_equals`, `from_contains`, `subject_contains`, `body: 'full' \| 'text' \| 'none'`, optional NDJSON spooling. |
 | `emailMove` | `email-move` | Move a message (`messageId`, `folder`) to `toFolder`. |
@@ -331,6 +331,23 @@ With `staged: true` a load **never writes into its target while it runs**. Batch
 
 A driver opts in by implementing `prepareStaging`, `mergeStaged`, `dropStaging` and `committedMovement`; `upload` refuses `staged` for one that does not. A driver that sets `stagesUpserts: true` (DuckDB) has every upsert staged, asked or not.
 
+### Import modes
+
+`mode` says what the target must be, checked before a row is read:
+
+| mode | the table | then |
+|---|---|---|
+| `'new'` | must not exist | created from the file. One that exists is refused ("already exists. Choose Append … or Replace …"), nothing written |
+| `'append'` | must exist | the rows are added. A name that matches no table is refused: a typo is not a new table |
+| `'replace'` | must exist | **staged**: the rows go to `<table>__xeplr_staging` while the import runs; when all are in, one transaction empties the table and moves them in. Stopped, failed or killed before that, the table is as it was. `merged` is `{ inserted, replaced }`, `replaced` being the rows it held before. No `primaryKeys` (that is an upsert), no `replaceFrom` |
+| omitted | | created if missing, else appended (as before modes existed) |
+
+A refused target throws with `code: 'TARGET_REFUSED'`. The mode is recorded on the import (`import_meta.meta.mode`), and **a Replace cannot be rolled back**: deleting its rows would leave the table empty, not as it was, so `uploader.rollback` refuses it.
+
+On Postgres, MySQL and SQL Server the staging table is shaped like the target (`lib/drivers/db/staging.js`; each driver gives only how to create it and how to run a transaction), so a row the target refuses is refused while staged and recorded in the error table like any other. Postgres copies NOT NULL, defaults and CHECKs (`LIKE … INCLUDING DEFAULTS INCLUDING CONSTRAINTS`); MySQL copies everything (`CREATE TABLE … LIKE`); SQL Server copies columns, NULL-ness and identity but not CHECKs (`SELECT TOP 0 * INTO`), so there a row only a CHECK refuses fails the final move, which leaves the table as it was. These three stage only a whole-table Replace (`stagedReplaceOnly`); DuckDB stages upserts and range replaces too.
+
+**Before loading: the file against the table.** `uploader.compareToTable({ driver, connection, targetTable, columns })` → `{ exists, matched, extra, missing: [{ name, required }] }`, matched by exact name, the framework's columns left out. `extra` (in the file, not the table) means the import will be refused; `missing` columns are left empty, and `required` ones (no empty value, no default) mean every row will be refused. `formats.columnsOf(format, filePath, { sheet? })` gives a file's columns from its first row. Every driver's `getTableSchema` now says `nullable` and `hasDefault` (an identity or auto-increment counts as a default).
+
 ### A written DuckDB file keeps no index
 
 DuckDB 1.5.4–1.5.6 has a bug ([duckdb/duckdb#26106](https://github.com/duckdb/duckdb/issues/26106), open upstream): when a process dies with rows still only in the WAL, the next open replays them into the table and the next checkpoint drops them from every index on it. The first `DELETE` that reaches one fails with *"Failed to delete all rows from index"*, which is **FATAL**: the whole file is unusable until the process restarts. Any index, unique or not. A table with no index is unaffected.
@@ -456,7 +473,7 @@ node --test test/uploader/reconcile.test.js
 
 | needs nothing | needs a database |
 |---|---|
-| `test/formats/pasted-rows.test.js` (its last case loads into Postgres when `PG_HOST`/`PG_PORT`/`PG_USER`/`PG_PASSWORD`/`PG_DATABASE` are set, else skipped), `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, which needs `@xeplr/db`: a peer dependency, installed for development) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js` (also honours `PG_HOST`/`PG_PORT`/`PG_USER`), `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
+| `test/import-modes.test.js` (DuckDB in memory; its Postgres cases run when `PG_HOST`/`PG_PORT`/`PG_USER`/`PG_PASSWORD`/`PG_DATABASE` are set, its MySQL cases when `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASSWORD` are), `test/formats/pasted-rows.test.js` (its last case loads into Postgres when `PG_HOST`/`PG_PORT`/`PG_USER`/`PG_PASSWORD`/`PG_DATABASE` are set, else skipped), `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, which needs `@xeplr/db`: a peer dependency, installed for development) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js` (also honours `PG_HOST`/`PG_PORT`/`PG_USER`), `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
 | `test/list-columns-length.test.js` (`XEPLR_TEST_PG_URL`, `MYSQL_TEST_URL`, `MSSQL_TEST_URL`; each skipped when unset), `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/duckdb-index-guard.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
 | | SQL Server `localhost:1433` (`MSSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mssql-integration.test.js` |
 | | Postgres + MySQL + SQL Server (`PG_*`, `MYSQL_*`, `MSSQL_*`): `test/builtins/db-replication.test.js` |
