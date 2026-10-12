@@ -348,6 +348,10 @@ On Postgres, MySQL and SQL Server the staging table is shaped like the target (`
 
 **Before loading: the file against the table.** `uploader.compareToTable({ driver, connection, targetTable, columns })` → `{ exists, matched, extra, missing: [{ name, required }] }`, matched by exact name, the framework's columns left out. `extra` (in the file, not the table) means the import will be refused; `missing` columns are left empty, and `required` ones (no empty value, no default) mean every row will be refused. `formats.columnsOf(format, filePath, { sheet? })` gives a file's columns from its first row. Every driver's `getTableSchema` now says `nullable` and `hasDefault` (an identity or auto-increment counts as a default).
 
+### The uploader's own tables
+
+Beside the tables it loads, the uploader makes three of its own: `<table>_import_errors` (refused rows), `<table>__xeplr_staging` (a staged load in progress) and, in a DuckDB file, `__xeplr_loads` (its ledger). `isInternalTable(name)` (also accepts a listing row `{ name }`) says whether a table is one of these, so an app listing a database's tables for people to pick from can leave them out. They still exist and are read where they belong.
+
 ### A written DuckDB file keeps no index
 
 DuckDB 1.5.4–1.5.6 has a bug ([duckdb/duckdb#26106](https://github.com/duckdb/duckdb/issues/26106), open upstream): when a process dies with rows still only in the WAL, the next open replays them into the table and the next checkpoint drops them from every index on it. The first `DELETE` that reaches one fails with *"Failed to delete all rows from index"*, which is **FATAL**: the whole file is unusable until the process restarts. Any index, unique or not. A table with no index is unaffected.
