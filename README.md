@@ -87,7 +87,7 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 |---|---|
 | `name` | Required. |
 | `description` | Text for pickers. |
-| `inputSchema` | `[{ name, type, required, default, description, order, ... }]`, validated by `@xeplr/schema-handler` `applySchema`. Built-ins also use `group`, `showWhen`, `system`, `options`, `optionsFrom`, `dependsOn` — hints for a form; validation treats every field the same. |
+| `inputSchema` | `[{ name, type, required, default, description, order, ... }]`, validated by `@xeplr/schema-handler` `applySchema`. Built-ins also use `group`, `showWhen`, `system`, `options`, `optionsFrom`, `dependsOn`, `label`, `hidden` (left out of a form unless a value is already set) and `control` (`'parameters'`: `[{ name, value }]` shown as rows, a value fixed or bound to the run's window: `{window.from}` / `{window.to}`, see `@xeplr/jobs`) — hints for a form; validation treats every field the same. |
 | `outputSchema` | Optional documentation of the return value. |
 | `requires` | Module names checked with `require.resolve` at `register()`. |
 | `execute({ input, system, metaStore })` | Returns (or resolves to) the output. |
@@ -159,7 +159,7 @@ For `mode: 'table'` the source's declared column types (`getTableSchema`) are pa
 | `mysql` | `CALL name(?, ?)` — positional; names are ignored (and logged as such) |
 | `postgres` | `SELECT * FROM fn(param => …)` when `returnsRows` (default `true`), `CALL proc(param => …)` when `false` |
 
-`params` is `[{ name, value }]` or bare values; values are always bound. `''` becomes `null`, integer- and decimal-looking strings become numbers, and an object value is an error naming the parameter. A schema-qualified name (`dbo.usp_x`) is quoted per part. `window: { from, to, fromParam, toParam }` appends the two bounds as parameters after `params` (null edges passed as `NULL`); a window without `fromParam`/`toParam` is refused. `maxRows` fails the run when more rows come back. If `system.log` is supplied it gets the statement, parameter count and window bounds — not the other parameter values.
+`params` is `[{ name, value }]` or bare values; values are always bound. `''` becomes `null`, integer- and decimal-looking strings become numbers, and an object value is an error naming the parameter. A schema-qualified name (`dbo.usp_x`) is quoted per part. `window: { from, to, fromParam, toParam }` appends the two bounds as parameters after `params` (null edges passed as `NULL`); a window without `fromParam`/`toParam` is refused. From a job, the usual way to pass dates is as ordinary parameters bound to the run's window, `{ "name": "startDate", "value": "{window.from}" }` (`@xeplr/jobs` fills them in); `params` carries `control: 'parameters'` and `window` is `hidden`, so a form shows rows instead of JSON. `maxRows` fails the run when more rows come back. If `system.log` is supplied it gets the statement, parameter count and window bounds — not the other parameter values.
 
 ### Email
 
