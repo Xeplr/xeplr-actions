@@ -87,7 +87,7 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 |---|---|
 | `name` | Required. |
 | `description` | Text for pickers. |
-| `inputSchema` | `[{ name, type, required, default, description, order, ... }]`, validated by `@xeplr/schema-handler` `applySchema`. Built-ins also use `group`, `showWhen`, `system`, `options`, `optionsFrom`, `dependsOn`, `label`, `hidden` (left out of a form unless a value is already set) and `control` (`'parameters'`: `[{ name, value }]` shown as rows, a value fixed or bound to the run's window: `{window.from}` / `{window.to}`, see `@xeplr/jobs`) — hints for a form; validation treats every field the same. |
+| `inputSchema` | `[{ name, type, required, default, description, order, ... }]`, validated by `@xeplr/schema-handler` `applySchema`. Built-ins also use `group`, `showWhen`, `system`, `options`, `optionsFrom`, `dependsOn`, `label`, `hidden` (left out of a form unless a value is already set), `suggestFrom` / `suggestWith` (a host option source that suggests values, asked with the named sibling inputs; `db-procedure`'s parameters ask `procedureParams` with the connection, database and procedure) and `control` (`'parameters'`: `[{ name, value }]` shown as rows, a value fixed or bound to the run's window: `{window.from}` / `{window.to}`, see `@xeplr/jobs`) — hints for a form; validation treats every field the same. |
 | `outputSchema` | Optional documentation of the return value. |
 | `requires` | Module names checked with `require.resolve` at `register()`. |
 | `execute({ input, system, metaStore })` | Returns (or resolves to) the output. |
