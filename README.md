@@ -260,6 +260,8 @@ await runAction(builtins.exportTable, {
 - `rect` (`fill`, `stroke`, `radius`)
 - `line`
 
+**`page: { width, height }`** (points, 72–14,400 each) makes every page exactly that size, edge to edge: no margins, no title and no footer or page numbers. It is for a PDF *of the screen*: a board captured as one image, posted as a single `image` block at `x: 0, y: 0, w: 1, h: 1` on a page the board's own size. Nothing is scaled, so what you see is what you get. Without `page`, the layout is A4 with margins, the title on page 1 and a footer on each page, as before.
+
 What it is given is assumed to come from a browser, so it is bounded: 50 pages, 200 blocks a page, 8 MB per image, 500 table rows, and 5,000 characters of text. An image that will not decode draws a note in its box instead of failing the whole file.
 
 Peers (optional, needed only by the format used): `fflate` for xlsx; `pdfkit` and `dejavu-fonts-ttf` for pdf. `writers` (`getWriter`, `INFO`, `SUPPORTED`) is exported for code that wants a writer without the action.
