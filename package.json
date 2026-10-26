@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@xeplr/expression-handler": "^2.0.0",
+    "@xeplr/expression-handler": "^2.3.1",
     "@xeplr/schema-handler": "^1.0.0"
   },
   "peerDependencies": {
