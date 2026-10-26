@@ -64,7 +64,7 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 |---|---|
 | `register(def)` / `register(name, def)` | Add an action. Throws without `name` or `execute`, or with a `requires` module that is not installed (`ActionMissingDependencyError`). Re-registering a name replaces it. |
 | `get(name)` / `has(name)` | Look one up. |
-| `list()` | `[{ name, description, inputSchema, outputSchema, requires }]` — serializable, for an actions endpoint. |
+| `list()` | `[{ name, description, inputSchema, outputSchema, requires, event }]` — serializable, for an actions endpoint. `event` is `null` for an ordinary action. |
 | `clear()` | Empty the registry. |
 | `runAction({ name, input, system?, timeoutMs? })` | Run a registered action. Never throws. |
 | `runAction(nameOrDef, input, { system, timeoutMs, metaStore }?)` | Same, by name or with an action module directly. |
@@ -91,6 +91,7 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 | `outputSchema` | Optional documentation of the return value. |
 | `requires` | Module names checked with `require.resolve` at `register()`. |
 | `execute({ input, system, metaStore })` | Returns (or resolves to) the output. |
+| `event` | Optional. Makes this a **screen function** rather than a step: the event it is written for — `beforeLoad`, `beforeSave`, `afterSave`, `beforeDelete`, `onError` (run by `@xeplr/factory` around a screen's records) or `decide` (run by `@xeplr/workflow-engine` to choose a flow's next step). A screen names one per event and pickers offer only the functions for that event. It is called with the event's context — `execute(ctx)`, not `{ input, system }` — and never as a workflow step. |
 
 ### `runAction` result
 
