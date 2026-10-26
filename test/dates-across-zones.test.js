@@ -15,19 +15,20 @@
 // The zoned value is WRITTEN from a session in India time (+05:30), so the
 // driver's own pin to UTC is what makes it read back right.
 //
-// Needs live databases; a source that cannot be reached is skipped and says so.
+// Needs live databases, from env (test/helpers/databases.js): a source whose
+// *_HOST is unset, or that cannot be reached, is skipped and says so.
 //   MySQL       MYSQL_HOST/PORT/USER/PASSWORD   (database xeplr_actions_test)
 //   Postgres    PG_HOST/PORT/USER/PASSWORD      (database postgres)
 //   SQL Server  MSSQL_HOST/PORT/USER/PASSWORD   (database master)
 var test = require('node:test');
+var db = require('./helpers/databases');
 var assert = require('node:assert');
 var path = require('path');
 var spawnSync = require('child_process').spawnSync;
 
 var SOURCES = {
   mysql: {
-    connection: { host: process.env.MYSQL_HOST || 'localhost', port: parseInt(process.env.MYSQL_PORT || '3306', 10),
-      user: process.env.MYSQL_USER || 'root', password: process.env.MYSQL_PASSWORD, database: 'xeplr_actions_test' },
+    connection: db.config('mysql', 'xeplr_actions_test'),
     // Written from an India-time session: 15:30 there is 10:00 UTC.
     setup: [
       'DROP TABLE IF EXISTS xz_src',
@@ -37,8 +38,7 @@ var SOURCES = {
     ]
   },
   postgres: {
-    connection: { host: process.env.PG_HOST || 'localhost', port: parseInt(process.env.PG_PORT || '5432', 10),
-      user: process.env.PG_USER || process.env.USER, password: process.env.PG_PASSWORD, database: 'postgres' },
+    connection: db.config('pg', 'postgres'),
     setup: [
       'DROP TABLE IF EXISTS xz_src',
       'CREATE TABLE xz_src (id int, d date, wall timestamp, inst timestamptz)',
@@ -47,8 +47,7 @@ var SOURCES = {
     ]
   },
   mssql: {
-    connection: { host: process.env.MSSQL_HOST || 'localhost', port: parseInt(process.env.MSSQL_PORT || '1433', 10),
-      user: process.env.MSSQL_USER || 'sa', password: process.env.MSSQL_PASSWORD, database: 'master' },
+    connection: db.config('mssql', 'master'),
     setup: [
       "IF OBJECT_ID('xz_src') IS NOT NULL DROP TABLE xz_src",
       'CREATE TABLE xz_src (id INT, d DATE, wall DATETIME2, inst DATETIMEOFFSET)',
@@ -56,6 +55,13 @@ var SOURCES = {
     ]
   }
 };
+
+// Only the databases this run was given.
+var UNSET = {};
+Object.keys(SOURCES).forEach(function(name) {
+  var why = db.missing([name === 'postgres' ? 'pg' : name]);
+  if (why) { UNSET[name] = why; delete SOURCES[name]; }
+});
 
 // Runs in the child, under the TZ it was given. Prints one JSON line.
 var child = function() {
@@ -126,11 +132,14 @@ function runIn(tz) {
   return JSON.parse(r.stdout.trim().split('\n').pop());
 }
 
-test('every source, moved into DuckDB from India and from New York, stores the same values by the three rules', function() {
+var NONE_SET = Object.keys(SOURCES).length ? false : 'needs at least one of ' + db.missing(['pg', 'mysql', 'mssql']).replace(/^needs /, '');
+
+test('every source, moved into DuckDB from India and from New York, stores the same values by the three rules', { skip: NONE_SET }, function() {
   var india = runIn('Asia/Kolkata');
   var newYork = runIn('America/New_York');
   var tested = 0;
   Object.keys(SOURCES).forEach(function(name) {
+    if (UNSET[name]) { console.log('  skipped ' + name + ' — ' + UNSET[name]); return; }
     var a = india[name];
     if (a && a.skipped) { console.log('  skipped ' + name + ' — ' + a.skipped); return; }
     assert.ok(a && !a.error, name + ': the move failed — ' + (a && a.error));
