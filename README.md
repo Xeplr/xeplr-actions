@@ -470,6 +470,10 @@ await driver.query(pool, userSql, params)          // reads only
 | The system mail sender refuses `text`, `bcc`, `from`, `replyTo` rather than dropping them. | A silently lost bcc is a compliance problem found a year later. |
 | `email-send` returns both `accepted` and `rejected`. | SMTP accepts per recipient; a "success" can drop half of them. |
 
+## Dev-only overrides
+
+`package.json` overrides `@azure/msal-node` to `^7.1.0` for this repo's own install. `mssql` (a dev dependency here, for the SQL Server driver tests) pulls it in through `tedious` → `@azure/identity`, which still asks for `^6` — and every 6.x has GHSA-xcx6-jx8p-x3h5 (high). Overrides apply only to this repo's own install; an app using `@xeplr/actions` resolves its own `mssql` and should add the same override until `@azure/identity` moves to msal-node 7. Remove it once it does.
+
 ## Tests
 
 There is no `npm test` script. The tests use `node:test`; run a file directly:
