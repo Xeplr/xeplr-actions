@@ -8,6 +8,11 @@ var assert = require('node:assert');
 var { test } = require('node:test');
 var op = require('../../lib/builtins/data-operation');
 
+/** The action as the runner calls it: { input, system }. */
+function exec(input, system) {
+  return op.execute({ input: input, system: system });
+}
+
 var ROWS = [
   { name: 'Ada', status: 'active', due: '2026-01-12', owner: 'ops', id: 1 },
   { name: 'Grace', status: 'done', due: '2026-02-01', owner: 'ops', id: 2 },
@@ -16,32 +21,32 @@ var ROWS = [
 var AT = { formula: { today: '2026-01-20' } };
 
 test('keeps only the rows the condition is true for', async function() {
-  var out = await op.execute({ from: ROWS, where: 'status = "active"' }, AT);
+  var out = await exec({ from: ROWS, where: 'status = "active"' }, AT);
   assert.equal(out.count, 2);
   assert.deepEqual(out.rows.map(function(r) { return r.name; }), ['Ada', 'Alan']);
 });
 
 test('no condition keeps everything, and no columns keeps every column', async function() {
-  var out = await op.execute({ from: ROWS }, AT);
+  var out = await exec({ from: ROWS }, AT);
   assert.equal(out.count, 3);
   assert.deepEqual(Object.keys(out.rows[0]), ['name', 'status', 'due', 'owner', 'id']);
 });
 
 test('a list is what it always gets: one object is one row, nothing is none', async function() {
   // The step after this one should never have to ask which shape it received.
-  assert.equal((await op.execute({ from: ROWS[0] }, AT)).count, 1);
-  assert.equal((await op.execute({ from: null }, AT)).count, 0);
-  assert.equal((await op.execute({ from: [] }, AT)).count, 0);
+  assert.equal((await exec({ from: ROWS[0] }, AT)).count, 1);
+  assert.equal((await exec({ from: null }, AT)).count, 0);
+  assert.equal((await exec({ from: [] }, AT)).count, 0);
 });
 
 test('picks and renames columns, in the order asked for', async function() {
-  var out = await op.execute({ from: ROWS, columns: ['due', 'name'] }, AT);
+  var out = await exec({ from: ROWS, columns: ['due', 'name'] }, AT);
   assert.deepEqual(Object.keys(out.rows[0]), ['due', 'name']);
   assert.equal(out.rows[0].owner, undefined);
 });
 
 test('computes a column with the formula engine', async function() {
-  var out = await op.execute({
+  var out = await exec({
     from: ROWS,
     columns: ['name', { name: 'late', label: 'Days late', formula: 'datediff([due], today())' }]
   }, AT);
@@ -51,53 +56,53 @@ test('computes a column with the formula engine', async function() {
 });
 
 test('the run\'s context decides what today and yesterday mean', async function() {
-  var recent = await op.execute({ from: ROWS, where: '[due] >= yesterday()' }, { formula: { today: '2026-01-30' } });
+  var recent = await exec({ from: ROWS, where: '[due] >= yesterday()' }, { formula: { today: '2026-01-30' } });
   assert.deepEqual(recent.rows.map(function(r) { return r.name; }), ['Grace', 'Alan']);
 
   // The boundary is the day itself: on the 2nd, yesterday IS the 1st, so a
   // row due that day is still in.
-  var onTheDay = await op.execute({ from: ROWS, where: '[due] >= yesterday()' }, { formula: { today: '2026-02-02' } });
+  var onTheDay = await exec({ from: ROWS, where: '[due] >= yesterday()' }, { formula: { today: '2026-02-02' } });
   assert.deepEqual(onTheDay.rows.map(function(r) { return r.name; }), ['Grace']);
 
   // The same step and the same rows, a day later: what a run filtered is a
   // fact about WHEN it ran, which is why the context carries it rather than
   // the action calling new Date().
-  var later = await op.execute({ from: ROWS, where: '[due] >= yesterday()' }, { formula: { today: '2026-02-03' } });
+  var later = await exec({ from: ROWS, where: '[due] >= yesterday()' }, { formula: { today: '2026-02-03' } });
   assert.equal(later.count, 0);
 });
 
 test('sorts, ascending or descending, with empty cells last either way', async function() {
-  var up = await op.execute({ from: ROWS, sort: 'due' }, AT);
+  var up = await exec({ from: ROWS, sort: 'due' }, AT);
   assert.deepEqual(up.rows.map(function(r) { return r.name; }), ['Ada', 'Alan', 'Grace']);
 
-  var down = await op.execute({ from: ROWS, sort: '-due' }, AT);
+  var down = await exec({ from: ROWS, sort: '-due' }, AT);
   assert.deepEqual(down.rows.map(function(r) { return r.name; }), ['Grace', 'Alan', 'Ada']);
 
   // An empty cell is not the smallest value, it is the absence of one —
   // burying it at the top of a descending list is how it gets missed.
-  var ragged = await op.execute({ from: [{ a: 2 }, { a: null }, { a: 1 }], sort: '-a' }, AT);
+  var ragged = await exec({ from: [{ a: 2 }, { a: null }, { a: 1 }], sort: '-a' }, AT);
   assert.deepEqual(ragged.rows.map(function(r) { return r.a; }), [2, 1, null]);
 });
 
 test('a row missing a column does not fail the step', async function() {
   // Rows out of a real system are ragged; one of them should not take the
   // other nine hundred down.
-  var out = await op.execute({ from: [{ name: 'Ada', status: 'active' }, { name: 'Bob' }], where: 'status = "active"' }, AT);
+  var out = await exec({ from: [{ name: 'Ada', status: 'active' }, { name: 'Bob' }], where: 'status = "active"' }, AT);
   assert.equal(out.count, 1);
 });
 
 test('gives no html until it is asked for', async function() {
-  var plain = await op.execute({ from: ROWS }, AT);
+  var plain = await exec({ from: ROWS }, AT);
   assert.equal(plain.html, undefined);
   assert.equal(plain.text, undefined);
 
-  var shown = await op.execute({ from: ROWS, format: true }, AT);
+  var shown = await exec({ from: ROWS, format: true }, AT);
   assert.match(shown.html, /<table/);
   assert.ok(shown.text.length > 0);
 });
 
 test('formats only the visible columns', async function() {
-  var out = await op.execute({
+  var out = await exec({
     from: ROWS,
     columns: ['name', { name: 'id', hidden: true }],
     format: true
@@ -109,13 +114,13 @@ test('formats only the visible columns', async function() {
 });
 
 test('a cell can never become markup', async function() {
-  var out = await op.execute({ from: [{ name: '<script>alert(1)</script>' }], format: true }, AT);
+  var out = await exec({ from: [{ name: '<script>alert(1)</script>' }], format: true }, AT);
   assert.doesNotMatch(out.html, /<script>/);
   assert.match(out.html, /&lt;script&gt;/);
 });
 
 test('says so when there is nothing left, rather than drawing an empty table', async function() {
-  var out = await op.execute({ from: ROWS, where: 'status = "cancelled"', format: true, emptyText: 'No overdue items' }, AT);
+  var out = await exec({ from: ROWS, where: 'status = "cancelled"', format: true, emptyText: 'No overdue items' }, AT);
   assert.equal(out.count, 0);
   assert.match(out.html, /No overdue items/);
   assert.doesNotMatch(out.html, /<table/);
@@ -124,11 +129,11 @@ test('says so when there is nothing left, rather than drawing an empty table', a
 
 test('a formula that cannot be read is refused, saying which one', async function() {
   await assert.rejects(
-    () => op.execute({ from: ROWS, where: 'status = = "active"' }, AT),
+    () => exec({ from: ROWS, where: 'status = = "active"' }, AT),
     function(err) { return /the condition/.test(err.message) && err.status === 400; }
   );
   await assert.rejects(
-    () => op.execute({ from: ROWS, columns: [{ name: 'x', label: 'Total', formula: '1 +' }] }, AT),
+    () => exec({ from: ROWS, columns: [{ name: 'x', label: 'Total', formula: '1 +' }] }, AT),
     function(err) { return /"Total"/.test(err.message); }
   );
 });

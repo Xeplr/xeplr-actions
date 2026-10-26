@@ -207,10 +207,18 @@ email.
 formulas and workflow's conditions, with the same functions. `where` and a
 computed column are the same language.
 
-**What `today()` means comes from the run's context**, not from the action:
-`context.formula` carries `today` and `fiscalYearStart`, so a workspace that
+**What "today" means comes from the run's context**, not from the action:
+`system.formula` carries `today` and `fiscalYearStart`, so a workspace that
 reckons days elsewhere and a run replayed from history agree on what
-`yesterday()` filtered. The action never calls `new Date()`.
+`ytd()` filtered. The action never calls `new Date()`.
+
+> `today()` and `yesterday()` are **not yet functions of
+> `@xeplr/expression-handler`**: a formula using them is refused, naming the
+> function. The example above shows where they will go.
+
+**It is called like every other action**: `execute({ input, system })`.
+Before 1.4.2 it took `(input, context)`, so through `runAction` (and so in
+every workflow step) `from` was undefined and the step returned no rows.
 
 **Only visible columns are rendered.** A column kept for the next step but
 marked `hidden` stays in `rows` and never reaches the table — an id the flow
