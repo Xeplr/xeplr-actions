@@ -1,12 +1,14 @@
+// @flags: --test-concurrency=1
 // Cross-engine replication — proves db-fetch (streaming) → db-push end to end:
 //   Postgres source  →  MySQL target   AND   Postgres source  →  MSSQL target
 // plus db-fetch's inline (streaming_mode:false) path and the zero-file
 // in-process pipe (upload({ source: driver.fetchStream(...) })).
 //
-// Requires live PG(5435) + MySQL(3306) + MSSQL(1433). Overridable via env.
+// Requires live Postgres + MySQL + SQL Server, from env (test/helpers/databases.js).
 // Run:  node --test test/builtins/db-replication.test.js
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('pg', 'mysql', 'mssql');
 var assert = require('node:assert');
 var fsp = require('fs/promises');
 
@@ -18,12 +20,9 @@ var dbPush   = require('../../lib/builtins/db/push');
 var { upload } = require('../../lib/uploader');
 var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
-var PG = { host: process.env.PG_HOST || 'localhost', port: +(process.env.PG_PORT || 5435),
-  user: process.env.PG_USER || 'postgres', password: process.env.PG_PASSWORD || 'postgres', database: 'xeplr_actions_test' };
-var MY = { host: process.env.MYSQL_HOST || 'localhost', port: +(process.env.MYSQL_PORT || 3306),
-  user: process.env.MYSQL_USER || 'root', password: process.env.MYSQL_PASSWORD || 'break_karo', database: 'xeplr_actions_test' };
-var MS = { host: process.env.MSSQL_HOST || 'localhost', port: +(process.env.MSSQL_PORT || 1433),
-  user: process.env.MSSQL_USER || 'sa', password: process.env.MSSQL_PASSWORD || 'Crazypwd123!', database: 'xeplr_actions_test' };
+var PG = db.config('pg', 'xeplr_actions_test');
+var MY = db.config('mysql', 'xeplr_actions_test');
+var MS = db.config('mssql', 'xeplr_actions_test');
 
 var N = 250;
 var SRC = 'repl_src_' + Math.random().toString(36).slice(2, 7);

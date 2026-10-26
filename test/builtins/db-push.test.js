@@ -1,7 +1,9 @@
+// @flags: --test-concurrency=1
 // End-to-end: register db-push, runAction against it, verify DB state.
 // Run:  node --test test/builtins/db-push.test.js
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('pg');
 var assert = require('node:assert');
 var fs = require('fs');
 var fsp = require('fs/promises');
@@ -13,10 +15,7 @@ var actions = require('../../index');
 var driver  = require('../../lib/drivers/db/postgres');
 var dbPush  = require('../../lib/builtins/db/push');
 
-var CONN = {
-  host: 'localhost', port: 5435, user: 'postgres',
-  password: process.env.PG_PASSWORD || 'postgres', database: 'xeplr_actions_test'
-};
+var CONN = db.config('pg', 'xeplr_actions_test');
 
 var pool = null;
 function tempTable() { return 'test_dbpush_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }

@@ -1,24 +1,20 @@
-// Integration test — requires a live SQL Server at localhost:1433 and the
+// @flags: --test-concurrency=1
+// Integration test — requires a live SQL Server (MSSQL_HOST … ) and the
 // mssql peer dep resolvable. Auto-creates the test DB if missing.
 // Run:  node --test test/drivers/mssql-integration.test.js
 //
-// Connection is overridable via env (MSSQL_HOST/PORT/USER/PASSWORD) so CI can
-// point at its own instance; defaults match the local docker box.
+// Connection from env (MSSQL_HOST/PORT/USER/PASSWORD); skipped without
+// MSSQL_HOST. See test/helpers/databases.js.
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('mssql');
 var assert = require('node:assert');
 var sql = require('mssql');
 var driver = require('../../lib/drivers/db/mssql');
 var { upload, rollback } = require('../../lib/uploader');
 var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
-var CONN = {
-  host:     process.env.MSSQL_HOST     || 'localhost',
-  port:     parseInt(process.env.MSSQL_PORT || '1433', 10),
-  user:     process.env.MSSQL_USER     || 'sa',
-  password: process.env.MSSQL_PASSWORD || 'Crazypwd123!',
-  database: 'xeplr_actions_test'
-};
+var CONN = db.config('mssql', 'xeplr_actions_test');
 
 var pool = null;
 

@@ -47,10 +47,13 @@ jobs:
             exit 0
           fi
           # Mirrors the package's own test script, but adds coverage and lcov.
-          node --test --experimental-test-coverage \
+          # Every folder of test/, one file at a time: the database suites share
+          # one test database. Without PG_HOST / MYSQL_HOST / MSSQL_HOST they
+          # are skipped and say so (test/helpers/databases.js).
+          node --test --test-concurrency=1 --experimental-test-coverage \
                --test-reporter=lcov --test-reporter-destination=coverage.info \
                --test-reporter=spec --test-reporter-destination=stdout \
-               test/*.test.js
+               "test/**/*.test.js"
 
       - name: Upload coverage to Codecov
         if: hashFiles('coverage.info') != ''

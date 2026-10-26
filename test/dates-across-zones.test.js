@@ -27,7 +27,7 @@ var spawnSync = require('child_process').spawnSync;
 var SOURCES = {
   mysql: {
     connection: { host: process.env.MYSQL_HOST || 'localhost', port: parseInt(process.env.MYSQL_PORT || '3306', 10),
-      user: process.env.MYSQL_USER || 'root', password: process.env.MYSQL_PASSWORD || 'break_karo', database: 'xeplr_actions_test' },
+      user: process.env.MYSQL_USER || 'root', password: process.env.MYSQL_PASSWORD, database: 'xeplr_actions_test' },
     // Written from an India-time session: 15:30 there is 10:00 UTC.
     setup: [
       'DROP TABLE IF EXISTS xz_src',
@@ -48,7 +48,7 @@ var SOURCES = {
   },
   mssql: {
     connection: { host: process.env.MSSQL_HOST || 'localhost', port: parseInt(process.env.MSSQL_PORT || '1433', 10),
-      user: process.env.MSSQL_USER || 'sa', password: process.env.MSSQL_PASSWORD || 'Crazypwd123!', database: 'master' },
+      user: process.env.MSSQL_USER || 'sa', password: process.env.MSSQL_PASSWORD, database: 'master' },
     setup: [
       "IF OBJECT_ID('xz_src') IS NOT NULL DROP TABLE xz_src",
       'CREATE TABLE xz_src (id INT, d DATE, wall DATETIME2, inst DATETIMEOFFSET)',

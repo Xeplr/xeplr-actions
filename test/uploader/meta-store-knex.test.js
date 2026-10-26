@@ -1,11 +1,13 @@
+// @flags: --test-concurrency=1
 // Wiring test: the knex MetaStore persists movements to import_meta in a real
 // xeplr_config DB while the uploader pushes data to a target DB. Proves
 // recordStart/recordEnd/getLast + the empty-source and rollback paths.
 //
-// Requires live PG (5435) + @xeplr/db resolvable. Run:
+// Requires live Postgres (PG_HOST … PG_PASSWORD) + @xeplr/db resolvable. Run:
 //   node --test test/uploader/meta-store-knex.test.js
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('pg');
 var assert = require('node:assert');
 var knexLib = require('knex');
 var { bootstrapConfigDb } = require('@xeplr/db');
@@ -15,7 +17,7 @@ var makeKnexMetaStore = require('../../lib/uploader/meta-store-knex');
 var { upload, rollback } = require('../../lib/uploader');
 var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
-var PG = { host: 'localhost', port: 5435, user: 'postgres', password: process.env.PG_PASSWORD || 'postgres' };
+var PG = db.config('pg');
 var TARGET = Object.assign({}, PG, { database: 'xeplr_actions_test' });
 var CONFIG_DB = 'xeplr_config_meta_test';
 // Deliberately DIFFERENT strings, so a statement that filters on the wrong
