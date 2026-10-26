@@ -484,20 +484,26 @@ await driver.query(pool, userSql, params)          // reads only
 
 ## Tests
 
-There is no `npm test` script. The tests use `node:test`; run a file directly:
-
 ```sh
+npm test                                   # every folder of test/, one file at a time
+PG_HOST=localhost PG_USER=$USER npm test   # the same, with the Postgres suites running
 node --test test/uploader/reconcile.test.js
 ```
 
-| needs nothing | needs a database |
-|---|---|
-| `test/import-modes.test.js` (DuckDB in memory; its Postgres cases run when `PG_HOST`/`PG_PORT`/`PG_USER`/`PG_PASSWORD`/`PG_DATABASE` are set, its MySQL cases when `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASSWORD` are), `test/formats/pasted-rows.test.js` (its last case loads into Postgres when `PG_HOST`/`PG_PORT`/`PG_USER`/`PG_PASSWORD`/`PG_DATABASE` are set, else skipped), `test/procedure-call.test.js`, `test/streaming/spool.test.js`, `test/uploader/reconcile.test.js`, `test/write-progress.test.js`, `test/stop-movement.test.js`, `test/formats/csv-gnarly.test.js`, `test/drivers/mysql.test.js`, `test/drivers/mssql.test.js`, `test/drivers/query-columns.test.js`, `test/builtins/email.test.js` (loads the package root, which needs `@xeplr/db`: a peer dependency, installed for development) | Postgres at `localhost:5435` (`PG_PASSWORD`, default `postgres`; database `xeplr_actions_test`): `test/drivers/postgres.test.js`, `test/builtins/db-push.test.js`, `test/builtins/file-upload.test.js` (also honours `PG_HOST`/`PG_PORT`/`PG_USER`), `test/uploader/upload.test.js`; plus `@xeplr/db` for `test/uploader/meta-store-knex.test.js` |
-| `test/list-columns-length.test.js` (`XEPLR_TEST_PG_URL`, `MYSQL_TEST_URL`, `MSSQL_TEST_URL`; each skipped when unset), `test/drivers/duckdb.test.js`, `test/drivers/duckdb-values.test.js`, `test/duckdb-index-guard.test.js`, `test/staged-load.test.js` (needs `@duckdb/node-api`) | MySQL `localhost:3306` (`MYSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mysql-integration.test.js` |
-| | SQL Server `localhost:1433` (`MSSQL_HOST/PORT/USER/PASSWORD`): `test/drivers/mssql-integration.test.js` |
-| | Postgres + MySQL + SQL Server (`PG_*`, `MYSQL_*`, `MSSQL_*`): `test/builtins/db-replication.test.js` |
+**Databases come from the environment, never from code** (`test/helpers/databases.js`):
 
-`test/db-move.live.js` runs against a developer's own `.env` path and is not a portable test. CI (`.github/workflows/ci.yml`) skips tests when there is no `test` script.
+| database | settings | default port |
+|---|---|---|
+| Postgres | `PG_HOST` `PG_PORT` `PG_USER` `PG_PASSWORD` | 5432 |
+| MySQL | `MYSQL_HOST` `MYSQL_PORT` `MYSQL_USER` `MYSQL_PASSWORD` | 3306 |
+| SQL Server | `MSSQL_HOST` `MSSQL_PORT` `MSSQL_USER` `MSSQL_PASSWORD` | 1433 |
+
+- **No `*_HOST`:** that database's tests are **skipped**, and each says which settings run it.
+- **`*_HOST` set:** they run, and a login the database refuses **fails** them. A configured run never passes by not connecting.
+- **One file at a time** (`--test-concurrency=1`): the database suites share the `xeplr_actions_test` database and race to create it when run side by side.
+- **Why:** these files used to carry a fixed host, port and password each (Postgres on `:5435`). On any other machine they all failed, so the pre-commit gate and CI ran only `test/*.test.js` and never this package's sub-folders. That is how `data-operation` shipped returning no rows (fixed in 1.4.2).
+
+Other tests read their own settings: `test/list-columns-length.test.js` (`XEPLR_TEST_PG_URL`, `MYSQL_TEST_URL`, `MSSQL_TEST_URL`), `test/readonly-connections.test.js` (`PGHOST` …), and `test/dates-across-zones.test.js` skips a database it cannot reach. `test/db-move.live.js` runs against a developer's own `.env` path and is not part of `npm test`.
 
 ## License
 

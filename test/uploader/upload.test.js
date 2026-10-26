@@ -1,17 +1,16 @@
+// @flags: --test-concurrency=1
 // Full uploader flow: spool-style source → SqlQueue → real Postgres.
 // Run:  node --test test/uploader/upload.test.js
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('pg');
 var assert = require('node:assert');
 var pg = require('pg');
 var driver = require('../../lib/drivers/db/postgres');
 var { upload, rollback } = require('../../lib/uploader');
 var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
-var CONN = {
-  host: 'localhost', port: 5435, user: 'postgres',
-  password: process.env.PG_PASSWORD || 'postgres', database: 'xeplr_actions_test'
-};
+var CONN = db.config('pg', 'xeplr_actions_test');
 
 var pool = null;
 

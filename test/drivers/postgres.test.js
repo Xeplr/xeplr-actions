@@ -1,19 +1,15 @@
-// Integration test — requires a live Postgres at localhost:5435 and the
+// @flags: --test-concurrency=1
+// Integration test — requires a live Postgres (PG_HOST … PG_PASSWORD) and the
 // pg peer dep resolvable. Auto-creates the test DB if missing.
 // Run:  node --test test/drivers/postgres.test.js
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('pg');
 var assert = require('node:assert');
 var pg = require('pg');
 var driver = require('../../lib/drivers/db/postgres');
 
-var CONN = {
-  host:     'localhost',
-  port:     5435,
-  user:     'postgres',
-  password: process.env.PG_PASSWORD || 'postgres',
-  database: 'xeplr_actions_test'
-};
+var CONN = db.config('pg', 'xeplr_actions_test');
 
 var pool = null;
 

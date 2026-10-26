@@ -1,7 +1,9 @@
+// @flags: --test-concurrency=1
 // End-to-end: CSV → file-upload action → real Postgres.
 // Run:  node --test test/builtins/file-upload.test.js
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('pg');
 var assert = require('node:assert');
 var fs = require('fs');
 var fsp = require('fs/promises');
@@ -13,12 +15,8 @@ var actions   = require('../../index');
 var driver    = require('../../lib/drivers/db/postgres');
 var fileUpload = require('../../lib/builtins/file/upload');
 
-// The test Postgres; PG_HOST/PG_PORT/PG_USER/PG_PASSWORD point it elsewhere.
-var CONN = {
-  host: process.env.PG_HOST || 'localhost', port: Number(process.env.PG_PORT || 5435),
-  user: process.env.PG_USER || 'postgres',
-  password: process.env.PG_PASSWORD || 'postgres', database: 'xeplr_actions_test'
-};
+// The test Postgres: PG_HOST/PG_PORT/PG_USER/PG_PASSWORD.
+var CONN = db.config('pg', 'xeplr_actions_test');
 var pool = null;
 
 function tempTable() { return 'test_csv_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }

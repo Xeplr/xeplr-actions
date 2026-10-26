@@ -1,24 +1,20 @@
-// Integration test — requires a live MySQL at localhost:3306 and the mysql2
+// @flags: --test-concurrency=1
+// Integration test — requires a live MySQL (MYSQL_HOST … ) and the mysql2
 // peer dep resolvable. Auto-creates the test DB if missing.
 // Run:  node --test test/drivers/mysql-integration.test.js
 //
-// Connection is overridable via env (MYSQL_HOST/PORT/USER/PASSWORD) so CI can
-// point at its own instance; defaults match the local dev box.
+// Connection from env (MYSQL_HOST/PORT/USER/PASSWORD); skipped without
+// MYSQL_HOST. See test/helpers/databases.js.
 
-var test = require('node:test');
+var db = require('../helpers/databases');
+var test = db.testWith('mysql');
 var assert = require('node:assert');
 var mysql = require('mysql2/promise');
 var driver = require('../../lib/drivers/db/mysql');
 var { upload, rollback } = require('../../lib/uploader');
 var { SqlQueue } = require('@xeplr/utils/lib/queue');
 
-var CONN = {
-  host:     process.env.MYSQL_HOST     || 'localhost',
-  port:     parseInt(process.env.MYSQL_PORT || '3306', 10),
-  user:     process.env.MYSQL_USER     || 'root',
-  password: process.env.MYSQL_PASSWORD || 'break_karo',
-  database: 'xeplr_actions_test'
-};
+var CONN = db.config('mysql', 'xeplr_actions_test');
 
 var pool = null;
 

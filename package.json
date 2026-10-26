@@ -3,6 +3,9 @@
   "version": "1.4.3",
   "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\""
+  },
   "files": [
     "index.js",
     "lib/"
