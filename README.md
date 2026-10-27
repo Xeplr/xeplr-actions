@@ -128,7 +128,8 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `fileList` | `file-list` | The files in a folder, optionally matching `pattern` (`*.csv`, `Bank-2026-??.pdf`), sorted by name or date. `{ files[{ name, path, size, modifiedAt }], count }`. "Is it there?" is the exact name and `count`. See [File steps](#file-steps-and-the-folders-they-may-use). |
 | `fileRead` | `file-read` | A CSV, text, Excel, JSON or NDJSON file as rows (format from the extension). `{ rows, count, columns, truncated }`, at most `maxRows` (50,000). |
 | `fileMove` | `file-move` | Move or copy a file into a folder (made if missing) or to a new name; `ifExists` as every saving step. `{ path, name, moved, skipped }`. |
-| `httpRequest`, `spawnProgram`, `dbQuery` | — | **Placeholders.** Empty modules with no `name` or `execute`; `register()` rejects them. |
+| `httpRequest` | `http-request` | Call another system's API: `method`, `path`, `query`, `body`, `headers`, signing in with a saved connection. `{ status, ok, body, headers }`. See [Calling an API](#calling-an-api-http-request). |
+| `spawnProgram`, `dbQuery` | — | **Placeholders.** Empty modules with no `name` or `execute`; `register()` rejects them. |
 
 ### Connections
 
@@ -247,6 +248,39 @@ A job or a workflow step stores `connectionInfoId`, never a password. `resolveCo
 
 - **`resolver(id, { field, inputs })`** is the host's: a login, or `{ dbType, connection }`. It sees all the inputs, for a companion id such as BI's `dbInfoId`.
 - **An id that resolves to nothing is refused** (`CONNECTION_NOT_FOUND`), never replaced by a literal `connection`. An id with no resolver configured: `NO_CONNECTION_RESOLVER`.
+
+## Calling an API: `http-request`
+
+```js
+await runAction({ name: 'http-request', input: {
+  connectionInfoId: 'bank-api',            // resolved by the host to `connection`
+  method: 'GET', path: '/statements',
+  query: { from: '2026-09-01', to: '2026-09-30' }
+} })
+// → { status: 200, ok: true, body: { rows: [...] }, headers: { 'content-type': … } }
+```
+
+**The connection** (what a saved API connection resolves to, so no key is ever in a workflow):
+
+```js
+{ baseUrl: 'https://api.bank.example/v2', headers?: { 'X-Tenant': 'acme' }, auth }
+```
+
+| `auth.type` | fields | sends |
+|---|---|---|
+| `none` | | nothing |
+| `apiKey` | `in` (`header` / `query`), `name`, `value` | `X-API-Key: …`, or `?key=…` |
+| `bearer` | `token` | `Authorization: Bearer …` |
+| `basic` | `username`, `password` | `Authorization: Basic …` |
+| `login` | `url` (path or address), `method` (POST), `body`, `tokenPath` (`data.token`), `expiresInPath`, `header`, `prefix` | calls the login first, then `Authorization: Bearer <token>` |
+| `oauth2` | `tokenUrl`, `clientId`, `clientSecret`, `scope`, `audience` | client credentials; then `Authorization: Bearer <access_token>` |
+
+- **A token from `login` or `oauth2` is kept in this process** until it runs out (`expires_in` / `expiresInPath`, a minute early; 10 minutes when none is given). A 401 throws it away and the call is tried once more with a fresh one.
+- **Retries:** a network failure, 429 or 5xx is tried again (`retries`, 2), waiting `retryAfterMs` (1 s) and doubling, or what `Retry-After` says. A 4xx other than 401 / 429 is not retried.
+- **A status that is not 2xx fails the step** with `HTTP_<status>` and the start of the answer. `failOnError: false`: it succeeds, so the arrows can branch on `output.status`.
+- **A saved connection signs in to its own address only:** a whole URL on another host is refused (`URL_NOT_ON_CONNECTION`), so the key cannot be sent elsewhere. With no connection, `path` may be a whole `https://` address.
+- **Bodies:** JSON by default; `bodyType: 'form'` or `'text'`. The answer is parsed as JSON when it is JSON, else text.
+- **Not yet:** paging through many pages of results.
 
 ## File steps, and the folders they may use
 
