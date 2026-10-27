@@ -125,7 +125,10 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `emailDelete` | `email-delete` | Flag `\Deleted` **and expunge** — permanent, not a move to Trash. |
 | `emailDownloadEmail` | `email-download-email` | Stream the raw message to an `.eml` file, named by `fileName`. `{ count, saved[], path, existing[] }`. |
 | `emailDownloadAttachments` | `email-download-attachments` | Save attachments, optionally filtered by `extension` / `filenameContains`, named by `fileName` (see [Saving files](#saving-files-names-and-a-name-already-taken)). `{ count, saved[], path, skipped, existing[] }`. |
-| `httpRequest`, `spawnProgram`, `dbQuery`, `fileMove` | — | **Placeholders.** Empty modules with no `name` or `execute`; `register()` rejects them. |
+| `fileList` | `file-list` | The files in a folder, optionally matching `pattern` (`*.csv`, `Bank-2026-??.pdf`), sorted by name or date. `{ files[{ name, path, size, modifiedAt }], count }`. "Is it there?" is the exact name and `count`. See [File steps](#file-steps-and-the-folders-they-may-use). |
+| `fileRead` | `file-read` | A CSV, text, Excel, JSON or NDJSON file as rows (format from the extension). `{ rows, count, columns, truncated }`, at most `maxRows` (50,000). |
+| `fileMove` | `file-move` | Move or copy a file into a folder (made if missing) or to a new name; `ifExists` as every saving step. `{ path, name, moved, skipped }`. |
+| `httpRequest`, `spawnProgram`, `dbQuery` | — | **Placeholders.** Empty modules with no `name` or `execute`; `register()` rejects them. |
 
 ### Connections
 
@@ -244,6 +247,19 @@ A job or a workflow step stores `connectionInfoId`, never a password. `resolveCo
 
 - **`resolver(id, { field, inputs })`** is the host's: a login, or `{ dbType, connection }`. It sees all the inputs, for a companion id such as BI's `dbInfoId`.
 - **An id that resolves to nothing is refused** (`CONNECTION_NOT_FOUND`), never replaced by a literal `connection`. An id with no resolver configured: `NO_CONNECTION_RESOLVER`.
+
+## File steps, and the folders they may use
+
+`file-list`, `file-read` and `file-move` take a path from whoever wrote the workflow, so they work **only inside the folders the install names** (`lib/fileRoots.js`):
+
+| | |
+|---|---|
+| `XEPLR_FILE_ROOTS` | Absolute folders, comma-separated: `/data/bank,/data/erp`. |
+| always allowed | `XEPLR_ACTIONS_TMP_DIR` (where downloads and exports land by default), so the next step can read what the last one saved. |
+
+- **Paths are absolute.** A relative one is refused: it would mean different files depending on where the server was started.
+- **No way out:** `../` and symbolic links are followed to the real path before it is checked; a target that does not exist yet is checked by its nearest existing folder.
+- **Not defaulted:** with no `XEPLR_FILE_ROOTS`, a path outside the temp folder is refused (`PATH_NOT_ALLOWED`), naming the setting. Why: without it, a workflow could read any file the server can, its own settings included.
 
 ## Saving files: names, and a name already taken
 
@@ -461,6 +477,7 @@ await actions.runAction(actions.builtins.dbPush, input, { metaStore: xcfg.metaSt
 | name | required? | meaning |
 |---|---|---|
 | `XEPLR_ACTIONS_TMP_DIR` | no | Where `db-fetch` and `email-read` spool NDJSON, email downloads go (unless `outDir`), and the uploader spools batches. Default `<os.tmpdir()>/xeplr-actions`. Files are not cleaned up by `db-fetch` or `email-read`. |
+| `XEPLR_FILE_ROOTS` | for `file-list`, `file-read`, `file-move` outside the temp folder | Absolute folders, comma-separated, that file steps may use. See [File steps](#file-steps-and-the-folders-they-may-use). |
 | `XCFG_DB_NAME` | for `attachConfig` | The `xeplr_configs` database name. In `configRequiredEnv`. |
 | `XCFG_DB_CONNECTION_INFO_ENCRYPTED` | no | Encrypted server login for `attachConfig`; overrides `XEPLR_DB_CONNECTION`. |
 | `XEPLR_DB_CONNECTION` | for `attachConfig`, unless the above is set | Shared encrypted server login. |
