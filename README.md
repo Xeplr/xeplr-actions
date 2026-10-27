@@ -233,6 +233,18 @@ should not take the other eight hundred and ninety-nine with it.
 **No aggregation.** `group by status, count` changes what a row *is*; that is
 a different shape and, when it is wanted, a different step.
 
+## Saved connections: an id in the definition, the login only in the call
+
+A job or a workflow step stores `connectionInfoId`, never a password. `resolveConnections(inputs, resolver, who?)` swaps each id for the login just before the action runs, in a **new** object, so what the run records still holds only the id. `@xeplr/jobs` and `@xeplr/workflow-engine` both use it.
+
+| field in the definition | filled for the action |
+|---|---|
+| `connectionInfoId` | `connection` (and `dbType`, when the resolver says) |
+| `sourceConnectionInfoId` / `targetConnectionInfoId` | `sourceConnection` / `targetConnection` (and `…DbType`) |
+
+- **`resolver(id, { field, inputs })`** is the host's: a login, or `{ dbType, connection }`. It sees all the inputs, for a companion id such as BI's `dbInfoId`.
+- **An id that resolves to nothing is refused** (`CONNECTION_NOT_FOUND`), never replaced by a literal `connection`. An id with no resolver configured: `NO_CONNECTION_RESOLVER`.
+
 ## Saving files: names, and a name already taken
 
 Every action that saves a file follows one rule (`lib/fileNames.js`): `email-download-attachments`, `email-download-email` and `export-table`.

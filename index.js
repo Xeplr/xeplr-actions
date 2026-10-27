@@ -22,6 +22,11 @@ module.exports = {
   //   runAction(nameOrAction, input, opts?)
   runAction:     runner.runAction,
 
+  // Saved connections: an id in the definition, the login only in the call.
+  // Shared by @xeplr/jobs and @xeplr/workflow-engine. See lib/connections.js.
+  resolveConnections: require('./lib/connections').resolveConnections,
+  connectionFieldFor: require('./lib/connections').connectionFieldFor,
+
   // Errors
   ActionNotRegisteredError:     errors.ActionNotRegisteredError,
   ActionMissingDependencyError: errors.ActionMissingDependencyError,
