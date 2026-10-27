@@ -224,3 +224,43 @@ test('bad input is refused, naming what is missing', async function() {
 });
 
 test.after(function() { fs.rmSync(dir, { recursive: true, force: true }); });
+
+test('plain records, as a workflow step gives them, need no reshaping', async function() {
+  var res = await actions.runAction(actions.builtins.exportTable, {
+    format: 'csv', document: { title: 'Recon' }, outputPath: out('records.csv'),
+    rows: [{ ref: 'A1', amount: 500 }, { ref: 'A3', amount: 900 }]
+  });
+  assert.equal(res.status, 'success', res.error && res.error.message);
+  var text = fs.readFileSync(out('records.csv'), 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/);
+  assert.deepEqual(text, ['ref,amount', 'A1,500', 'A3,900']);
+
+  // Columns chosen and renamed by key.
+  var picked = await actions.runAction(actions.builtins.exportTable, {
+    format: 'csv', outputPath: out('picked.csv'),
+    document: { columns: [{ header: 'Amount', key: 'amount', kind: 'number' }, { header: 'Reference', key: 'ref' }] },
+    rows: [{ ref: 'A1', amount: 500 }]
+  });
+  assert.equal(picked.status, 'success', picked.error && picked.error.message);
+  assert.deepEqual(fs.readFileSync(out('picked.csv'), 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/), ['Amount,Reference', '500,A1']);
+});
+
+test('a file already at outputPath is never silently replaced', async function() {
+  var input = { format: 'csv', outputPath: out('Recon-2026-09.csv'), rows: [{ a: 1 }] };
+  assert.equal((await actions.runAction(actions.builtins.exportTable, input)).status, 'success');
+
+  var again = await actions.runAction(actions.builtins.exportTable, input);
+  assert.equal(again.status, 'failed');
+  assert.equal(again.error.code, 'FILE_EXISTS');
+  assert.match(again.error.message, /"Recon-2026-09.csv" is already in/);
+
+  var skipped = await actions.runAction(actions.builtins.exportTable, Object.assign({}, input, { ifExists: 'skip' }));
+  assert.equal(skipped.output.skipped, true);
+  assert.equal(skipped.output.rows, 0);
+
+  var suffixed = await actions.runAction(actions.builtins.exportTable, Object.assign({}, input, { ifExists: 'addSuffix' }));
+  assert.equal(suffixed.output.fileName, 'Recon-2026-09 (2).csv');
+
+  var replaced = await actions.runAction(actions.builtins.exportTable, Object.assign({}, input, { ifExists: 'overwrite', rows: [{ a: 2 }] }));
+  assert.equal(replaced.output.fileName, 'Recon-2026-09.csv');
+  assert.match(fs.readFileSync(out('Recon-2026-09.csv'), 'utf8'), /2/);
+});

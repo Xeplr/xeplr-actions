@@ -123,8 +123,8 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `emailRead` | `email-read` | List messages, newest first, with `unread_only`, `limit` (1–1000, default 50), `since`, `from_equals`, `from_contains`, `subject_contains`, `body: 'full' \| 'text' \| 'none'`, optional NDJSON spooling. |
 | `emailMove` | `email-move` | Move a message (`messageId`, `folder`) to `toFolder`. |
 | `emailDelete` | `email-delete` | Flag `\Deleted` **and expunge** — permanent, not a move to Trash. |
-| `emailDownloadEmail` | `email-download-email` | Stream the raw message to an `.eml` file. `{ count, saved[], path }`. |
-| `emailDownloadAttachments` | `email-download-attachments` | Save attachments, optionally filtered by `extension` / `filenameContains`. `{ count, saved[], path, skipped }`. |
+| `emailDownloadEmail` | `email-download-email` | Stream the raw message to an `.eml` file, named by `fileName`. `{ count, saved[], path, existing[] }`. |
+| `emailDownloadAttachments` | `email-download-attachments` | Save attachments, optionally filtered by `extension` / `filenameContains`, named by `fileName` (see [Saving files](#saving-files-names-and-a-name-already-taken)). `{ count, saved[], path, skipped, existing[] }`. |
 | `httpRequest`, `spawnProgram`, `dbQuery`, `fileMove` | — | **Placeholders.** Empty modules with no `name` or `execute`; `register()` rejects them. |
 
 ### Connections
@@ -231,9 +231,42 @@ should not take the other eight hundred and ninety-nine with it.
 **No aggregation.** `group by status, count` changes what a row *is*; that is
 a different shape and, when it is wanted, a different step.
 
+## Saving files: names, and a name already taken
+
+Every action that saves a file follows one rule (`lib/fileNames.js`): `email-download-attachments`, `email-download-email` and `export-table`.
+
+**`fileName`** (the email steps) or **`outputPath`** (`export-table`) is a template with two kinds of placeholder:
+
+| | filled in by | examples |
+|---|---|---|
+| `{…}` | the workflow, before the step runs | `{trigger.window.from\|date:YYYY-MM}`, `{item.from}` |
+| `[…]` | the action, from the file itself | attachments: `[original]` `[name]` `[ext]` `[n]` `[id]`; a whole email: `[subject]` `[id]` `[ext]` |
+
+```
+Bank-{trigger.window.from|date:YYYY-MM:Asia/Kolkata}-[original]   →  Bank-2026-09-statement.csv
+```
+
+- **Why two kinds:** the engine fills every `{…}` first, so a file's own placeholders in `{…}` would be blanked before the action saw them.
+- **A placeholder the file does not have** is refused, listing the ones it has. A name that comes out empty is refused.
+- **A name never leaves its folder:** `/ \ : * ? " < > |` become `_`, and `.` or `..` is refused. Spaces are kept.
+- **No `fileName`:** a random prefix and the original name, as before.
+
+**`ifExists`**, when the name is already taken:
+
+| | |
+|---|---|
+| `fail` (default) | The step fails with `FILE_EXISTS`, naming the file, and **nothing is written**. A second run for the same period is caught, not repeated. |
+| `skip` | Not written; listed in `existing[]` (`export-table`: `skipped: true`), so the next step can branch on "already downloaded". |
+| `overwrite` | Replaced. Two files of one step with one name still get a suffix, so neither is lost. |
+| `addSuffix` | `Bank-2026-09 (2).csv`, the next free number. |
+
+Decided for the whole step before anything is written, so `fail` never leaves half a batch.
+
 ## Export
 
-`export-table` writes rows that arrive **already presented**: which columns, in what order, under what heading, and for each cell its raw value and the text a reader saw. The action knows nothing of reports or pivots; the caller decides all that (in xeplr-bi, `report-engine`'s `presentTable` does). Each format takes what it needs:
+**From a workflow:** `rows` can be plain records, as a fetch or the data step gives them (`{ ref: 'A1', amount: 500 }`). Columns pick them by `key` (default: the header). With no columns, every field of the first row, in order. `outputPath` follows [Saving files](#saving-files-names-and-a-name-already-taken).
+
+`export-table` also writes rows that arrive **already presented**: which columns, in what order, under what heading, and for each cell its raw value and the text a reader saw. The action knows nothing of reports or pivots; the caller decides all that (in xeplr-bi, `report-engine`'s `presentTable` does). Each format takes what it needs:
 
 | format | writes | from |
 |---|---|---|
