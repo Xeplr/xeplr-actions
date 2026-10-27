@@ -191,13 +191,15 @@ await runAction({ name: 'data-operation', input: {
   sort: '-late',
   format: true, title: 'Overdue'
 } })
-// → { rows, count, html, text }
+// → { rows, count, columns, html, text }
 ```
 
 **Rows and a rendering, both.** `rows` and `count` are always there; `html`
 and `text` only when `format` is on, because building a table for ten
 thousand rows nobody renders is work done and stored on every run. Neither is
 privileged — the next step binds whichever it wants.
+
+**`columns` says the order and the headings** (`[{ key, header }]`, the visible ones), in `export-table`'s column shape, so a workflow writes `document: { columns: "{steps.overdue.output.columns}" }`. Why: a step's output is stored as JSONB, which reorders a row's keys (shortest first), so the next step cannot read the column order off a row. A file exported without it came out as `late, amount, invoice, customer`.
 
 **`count` is the point of the step as often as `rows` is**: it is what lets
 the step after it branch on *nothing to report* instead of sending an empty
