@@ -302,7 +302,7 @@ Which inputs are checked: `file-list` `folder`; `file-read` / `file-delete` `pat
 
 **`email-send` attachments** are `{ filename, path }` (inside the folder) or `{ filename, content }`. `href` and `raw` are refused, and so is a body that is not text: the mail library reads `path`, `href` and `html: { path }` from disk or from the network, so an unchecked one would mail the server's own settings or fetch an internal address.
 
-`dataDir` is exported (`resolve(name)`, `tenantFolder()`, `scratch()`, `nameOf(path)`) for a host's own code that keeps files per tenant.
+`dataDir` is exported (`resolve(name)`, `tenantFolder()`, `scratch()`, `nameOf(path)`) for a host's own code that keeps files per tenant. It is `@xeplr/db`'s (peer ^1.1.0), the one copy every package uses.
 
 **From 1.x:** `XEPLR_FILE_ROOTS` and `XEPLR_ACTIONS_TMP_DIR` are gone. Set `XEPLR_DATA_DIR`, call `registerApplication()`, and run actions inside a tenant context (jobs and the workflow engine already do). A saved path outside the tenant's folder is refused until its files are moved in.
 
