@@ -128,6 +128,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `fileList` | `file-list` | The files in a folder, optionally matching `pattern` (`*.csv`, `Bank-2026-??.pdf`), sorted by name or date. `{ files[{ name, path, size, modifiedAt }], count }`. "Is it there?" is the exact name and `count`. See [File steps](#file-steps-and-the-folders-they-may-use). |
 | `fileRead` | `file-read` | A CSV, text, Excel, JSON or NDJSON file as rows (format from the extension). `{ rows, count, columns, truncated }`, at most `maxRows` (50,000). |
 | `fileMove` | `file-move` | Move or copy a file into a folder (made if missing) or to a new name; `ifExists` as every saving step. `{ path, name, moved, skipped }`. |
+| `fileDelete` | `file-delete` | Delete one file, **permanently** (no trash; `file-move` to a "processed" folder is the reversible one). Never a folder. `ifMissing`: `fail` (default) or `skip`. `{ path, deleted, skipped }`. |
 | `httpRequest` | `http-request` | Call another system's API: `method`, `path`, `query`, `body`, `headers`, signing in with a saved connection. `{ status, ok, body, headers }`. See [Calling an API](#calling-an-api-http-request). |
 | `spawnProgram`, `dbQuery` | — | **Placeholders.** Empty modules with no `name` or `execute`; `register()` rejects them. |
 
@@ -284,7 +285,7 @@ await runAction({ name: 'http-request', input: {
 
 ## File steps, and the folders they may use
 
-`file-list`, `file-read` and `file-move` take a path from whoever wrote the workflow, so they work **only inside the folders the install names** (`lib/fileRoots.js`):
+`file-list`, `file-read`, `file-move` and `file-delete` take a path from whoever wrote the workflow, so they work **only inside the folders the install names** (`lib/fileRoots.js`):
 
 | | |
 |---|---|
@@ -511,7 +512,7 @@ await actions.runAction(actions.builtins.dbPush, input, { metaStore: xcfg.metaSt
 | name | required? | meaning |
 |---|---|---|
 | `XEPLR_ACTIONS_TMP_DIR` | no | Where `db-fetch` and `email-read` spool NDJSON, email downloads go (unless `outDir`), and the uploader spools batches. Default `<os.tmpdir()>/xeplr-actions`. Files are not cleaned up by `db-fetch` or `email-read`. |
-| `XEPLR_FILE_ROOTS` | for `file-list`, `file-read`, `file-move` outside the temp folder | Absolute folders, comma-separated, that file steps may use. See [File steps](#file-steps-and-the-folders-they-may-use). |
+| `XEPLR_FILE_ROOTS` | for `file-list`, `file-read`, `file-move`, `file-delete` outside the temp folder | Absolute folders, comma-separated, that file steps may use. See [File steps](#file-steps-and-the-folders-they-may-use). |
 | `XCFG_DB_NAME` | for `attachConfig` | The `xeplr_configs` database name. In `configRequiredEnv`. |
 | `XCFG_DB_CONNECTION_INFO_ENCRYPTED` | no | Encrypted server login for `attachConfig`; overrides `XEPLR_DB_CONNECTION`. |
 | `XEPLR_DB_CONNECTION` | for `attachConfig`, unless the above is set | Shared encrypted server login. |

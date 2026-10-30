@@ -1,4 +1,4 @@
-// file-list, file-read and file-move, on a real folder: they work inside the
+// file-list, file-read, file-move and file-delete, on a real folder: they work inside the
 // folders an install names, and nowhere else.
 var assert = require('node:assert');
 var { test } = require('node:test');
@@ -9,6 +9,7 @@ var { runAction } = require('../lib/runner');
 var list = require('../lib/builtins/file/list');
 var read = require('../lib/builtins/file/read');
 var move = require('../lib/builtins/file/move');
+var del = require('../lib/builtins/file/delete');
 
 var root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'xeplr-roots-')));
 var outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'xeplr-outside-')));
@@ -105,4 +106,28 @@ test('move: to a new name, and never out of the allowed folders', async function
   assert.equal(res.output.name, 'Notes Sep 2026.txt');
   var out = await runAction(move, { from: path.join(root, 'bank', 'Notes Sep 2026.txt'), to: outside + '/' });
   assert.equal(out.error.code, 'PATH_NOT_ALLOWED');
+});
+
+test('delete: one file, gone; a missing one fails or is skipped; never a folder or outside', async function() {
+  var file = path.join(root, 'bank', 'done.csv');
+  fs.writeFileSync(file, 'a\n1\n');
+  var res = await runAction(del, { path: file });
+  assert.equal(res.status, 'success', res.error && res.error.message);
+  assert.deepEqual(res.output, { path: file, deleted: true, skipped: false });
+  assert.ok(!fs.existsSync(file));
+
+  var again = await runAction(del, { path: file });
+  assert.equal(again.error.code, 'FILE_NOT_FOUND');
+  var skipped = await runAction(del, { path: file, ifMissing: 'skip' });
+  assert.equal(skipped.status, 'success');
+  assert.equal(skipped.output.skipped, true);
+  assert.equal(skipped.output.deleted, false);
+
+  var folder = await runAction(del, { path: path.join(root, 'bank') });
+  assert.equal(folder.error.code, 'NOT_A_FILE');
+  assert.ok(fs.existsSync(path.join(root, 'bank')));
+
+  var out = await runAction(del, { path: path.join(outside, 'secret.csv') });
+  assert.equal(out.error.code, 'PATH_NOT_ALLOWED');
+  assert.ok(fs.existsSync(path.join(outside, 'secret.csv')), 'nothing outside is touched');
 });
