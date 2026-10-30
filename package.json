@@ -1,7 +1,7 @@
 {
   "name": "@xeplr/actions",
-  "version": "2.0.0",
-  "description": "Named-action registry with typed inputs and safe invocation \u2014 plus built-in actions for HTTP, DB, files, email, spawn",
+  "version": "2.1.0",
+  "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
   "scripts": {
     "test": "node --test --test-concurrency=1 --require ./test/setup-data-dir.cjs \"test/**/*.test.js\""
