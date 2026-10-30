@@ -124,7 +124,9 @@ var child = function() {
 };
 
 function runIn(tz) {
-  var r = spawnSync(process.execPath, ['-e', '(' + child.toString() + ')()'], {
+  // The child is an app of its own: the same data root and application as
+  // this process (test/setup-data-dir.cjs).
+  var r = spawnSync(process.execPath, ['--require', path.join(__dirname, 'setup-data-dir.cjs'), '-e', '(' + child.toString() + ')()'], {
     env: Object.assign({}, process.env, { TZ: tz, ACTIONS: path.join(__dirname, '..'), SOURCES: JSON.stringify(SOURCES) }),
     encoding: 'utf8', timeout: 180000
   });

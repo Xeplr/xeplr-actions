@@ -7,7 +7,6 @@ var test = db.testWith('pg');
 var assert = require('node:assert');
 var fs = require('fs');
 var fsp = require('fs/promises');
-var os = require('os');
 var path = require('path');
 var pg = require('pg');
 
@@ -22,7 +21,8 @@ var pool = null;
 function tempTable() { return 'test_csv_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6); }
 
 async function writeCsv(csv) {
-  var dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'csvup-'));
+  // Inside the tenant's own folder: a local file is read only from there (lib/dataDir.js).
+  var dir = await fsp.mkdtemp(path.join(require('../../lib/dataDir').tenantFolder(), 'csvup-'));
   var file = path.join(dir, 'data.csv');
   await fsp.writeFile(file, csv);
   return { dir, file };

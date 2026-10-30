@@ -7,7 +7,6 @@ var test = db.testWith('pg');
 var assert = require('node:assert');
 var fs = require('fs');
 var fsp = require('fs/promises');
-var os = require('os');
 var path = require('path');
 var pg = require('pg');
 
@@ -69,7 +68,7 @@ test('runAction(db-push) with inline rows lands them + reports summary', async f
 
 test('runAction(db-push) with filePath reads NDJSON and lands rows', async function() {
   var tbl = tempTable();
-  var tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'dbpush-'));
+  var tmpDir = await fsp.mkdtemp(path.join(require('../../lib/dataDir').tenantFolder(), 'dbpush-'));
   var filePath = path.join(tmpDir, 'rows.ndjson');
 
   // Write 20 rows to NDJSON

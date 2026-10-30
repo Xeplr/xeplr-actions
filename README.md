@@ -125,7 +125,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `emailDelete` | `email-delete` | Flag `\Deleted` **and expunge** — permanent, not a move to Trash. |
 | `emailDownloadEmail` | `email-download-email` | Stream the raw message to an `.eml` file, named by `fileName`. `{ count, saved[], path, existing[] }`. |
 | `emailDownloadAttachments` | `email-download-attachments` | Save attachments, optionally filtered by `extension` / `filenameContains`, named by `fileName` (see [Saving files](#saving-files-names-and-a-name-already-taken)). `{ count, saved[], path, skipped, existing[] }`. |
-| `fileList` | `file-list` | The files in a folder, optionally matching `pattern` (`*.csv`, `Bank-2026-??.pdf`), sorted by name or date. `{ files[{ name, path, size, modifiedAt }], count }`. "Is it there?" is the exact name and `count`. See [File steps](#file-steps-and-the-folders-they-may-use). |
+| `fileList` | `file-list` | The files in a folder, optionally matching `pattern` (`*.csv`, `Bank-2026-??.pdf`), sorted by name or date. `{ files[{ name, path, size, modifiedAt }], count }`. "Is it there?" is the exact name and `count`. See [Where files are](#where-files-are-one-data-root-a-folder-per-tenant). |
 | `fileRead` | `file-read` | A CSV, text, Excel, JSON or NDJSON file as rows (format from the extension). `{ rows, count, columns, truncated }`, at most `maxRows` (50,000). |
 | `fileMove` | `file-move` | Move or copy a file into a folder (made if missing) or to a new name; `ifExists` as every saving step. `{ path, name, moved, skipped }`. |
 | `fileDelete` | `file-delete` | Delete one file, **permanently** (no trash; `file-move` to a "processed" folder is the reversible one). Never a folder. `ifMissing`: `fail` (default) or `skip`. `{ path, deleted, skipped }`. |
@@ -283,18 +283,28 @@ await runAction({ name: 'http-request', input: {
 - **Bodies:** JSON by default; `bodyType: 'form'` or `'text'`. The answer is parsed as JSON when it is JSON, else text.
 - **Not yet:** paging through many pages of results.
 
-## File steps, and the folders they may use
+## Where files are: one data root, a folder per tenant
 
-`file-list`, `file-read`, `file-move` and `file-delete` take a path from whoever wrote the workflow, so they work **only inside the folders the install names** (`lib/fileRoots.js`):
+**`XEPLR_DATA_DIR` is required** (`requiredEnv` — spread it into your `env.required.js`). Every file any step reads or writes is inside the folder of the tenant the work runs as, and nowhere else (`lib/dataDir.js`):
 
-| | |
-|---|---|
-| `XEPLR_FILE_ROOTS` | Absolute folders, comma-separated: `/data/bank,/data/erp`. |
-| always allowed | `XEPLR_ACTIONS_TMP_DIR` (where downloads and exports land by default), so the next step can read what the last one saved. |
+```
+<XEPLR_DATA_DIR>/<applicationId>/<mtId1>/<mtId2>/…
+```
 
-- **Paths are absolute.** A relative one is refused: it would mean different files depending on where the server was started.
-- **No way out:** `../` and symbolic links are followed to the real path before it is checked; a target that does not exist yet is checked by its nearest existing folder.
-- **Not defaulted:** with no `XEPLR_FILE_ROOTS`, a path outside the temp folder is refused (`PATH_NOT_ALLOWED`), naming the setting. Why: without it, a workflow could read any file the server can, its own settings included.
+- **The application** is the one registered with `@xeplr/db`'s `registerApplication()`, which a host calls at boot. A company id is minted per app, so company 42 of BI and company 42 of ERP never share a folder. No application registered → refused.
+- **The tenant** comes from the context every query runs in: a request after the membership gate, a job, or a workflow run (`runWithMt`). **Never from a step's input.** An app with no tenancy registered is one tenant: `<root>/<app>`.
+- **A step names files inside its folder:** `bank/inbox/sept.csv`. A full path is accepted only when it is already inside, such as what an earlier step returned (`file-list`'s `path`). Anything else is refused (`PATH_NOT_ALLOWED`): a path elsewhere, `../`, a symbolic link pointing out, or an address (`http://…`, `file://…`). `../` and links are followed to the real path before the check; a path that does not exist yet is checked by its nearest existing folder.
+- **`*` at a level** (a job for every company) is a folder of its own, `_all`, which no company's step reaches. **No tenant at all is refused** (`NO_TENANT`) — never the root — as a query with no tenant finds nothing.
+- **Temporary files** (db-fetch and email-read spools, uploader batches, an export or email download nobody named) go in the tenant's `tmp/`.
+- **Not defaulted:** a missing or relative `XEPLR_DATA_DIR`, or one that does not exist, is refused by name (`DATA_DIR_UNSET`). A wrong root that boots would read as empty data rather than as an error.
+
+Which inputs are checked: `file-list` `folder`; `file-read` / `file-delete` `path`; `file-move` `from` and `to`; `file-upload`'s local source (`sourcePath`, and every local-source operation); `db-push` `filePath`; `export-table` `rowsFile` and `outputPath`; `export-pages` `outputPath`; the email download steps' folder; and `email-send` attachments.
+
+**`email-send` attachments** are `{ filename, path }` (inside the folder) or `{ filename, content }`. `href` and `raw` are refused, and so is a body that is not text: the mail library reads `path`, `href` and `html: { path }` from disk or from the network, so an unchecked one would mail the server's own settings or fetch an internal address.
+
+`dataDir` is exported (`resolve(name)`, `tenantFolder()`, `scratch()`, `nameOf(path)`) for a host's own code that keeps files per tenant.
+
+**From 1.x:** `XEPLR_FILE_ROOTS` and `XEPLR_ACTIONS_TMP_DIR` are gone. Set `XEPLR_DATA_DIR`, call `registerApplication()`, and run actions inside a tenant context (jobs and the workflow engine already do). A saved path outside the tenant's folder is refused until its files are moved in.
 
 ## Saving files: names, and a name already taken
 
@@ -358,7 +368,7 @@ await runAction(builtins.exportTable, {
 
 - **Streaming.** CSV and Excel stream rows to disk, from `rows` or from `rowsFile` (NDJSON, one row per line, as `streaming.spool` writes it); 200,000 rows to xlsx take about 2 s in flat memory. Our own xlsx writer runs on `fflate`. `exceljs` was rejected: it pulls a `uuid` with a published advisory and has had no release since December 2024.
 - **Fonts.** pdfkit's built-in fonts cannot draw `₹` or non-Latin text; a missing glyph draws as nothing. The PDF embeds **DejaVu Sans Condensed** (the `dejavu-fonts-ttf` peer). Pass `document.font` / `boldFont` (TTF/OTF paths) for scripts it lacks. Only the glyphs used are embedded.
-- **Output** goes to `outputPath`, or to a new directory under `XEPLR_ACTIONS_TMP_DIR` with a file named after the title. A failed export leaves no half-written file.
+- **Output** goes to `outputPath` (a name inside the tenant's folder), or to a new directory in its `tmp/` with a file named after the title. A failed export leaves no half-written file.
 
 `export-pages` lays out `pages: [{ blocks }]`, each block positioned by **fractions** of the page's content box (A4 landscape by default):
 - `text` (`text`, `size`, `bold`, `color`, `align`)
@@ -511,8 +521,7 @@ await actions.runAction(actions.builtins.dbPush, input, { metaStore: xcfg.metaSt
 
 | name | required? | meaning |
 |---|---|---|
-| `XEPLR_ACTIONS_TMP_DIR` | no | Where `db-fetch` and `email-read` spool NDJSON, email downloads go (unless `outDir`), and the uploader spools batches. Default `<os.tmpdir()>/xeplr-actions`. Files are not cleaned up by `db-fetch` or `email-read`. |
-| `XEPLR_FILE_ROOTS` | for `file-list`, `file-read`, `file-move`, `file-delete` outside the temp folder | Absolute folders, comma-separated, that file steps may use. See [File steps](#file-steps-and-the-folders-they-may-use). |
+| `XEPLR_DATA_DIR` | **yes** (`requiredEnv`) | The root of all data: absolute, existing. Each tenant's files are in `<root>/<app>/<mtId1>/…`, temporary ones in its `tmp/`. See [Where files are](#where-files-are-one-data-root-a-folder-per-tenant). Files are not cleaned up by `db-fetch` or `email-read`. |
 | `XCFG_DB_NAME` | for `attachConfig` | The `xeplr_configs` database name. In `configRequiredEnv`. |
 | `XCFG_DB_CONNECTION_INFO_ENCRYPTED` | no | Encrypted server login for `attachConfig`; overrides `XEPLR_DB_CONNECTION`. |
 | `XEPLR_DB_CONNECTION` | for `attachConfig`, unless the above is set | Shared encrypted server login. |
@@ -599,6 +608,7 @@ node --test test/uploader/reconcile.test.js
 
 - **No `*_HOST`:** that database's tests are **skipped**, and each says which settings run it.
 - **`*_HOST` set:** they run, and a login the database refuses **fails** them. A configured run never passes by not connecting.
+- **A data root and an application per test process** (`--require ./test/setup-data-dir.cjs`, in `npm test`, CI, and the gate through `@flags` on `test/data-dir.test.js`), as an app has at boot. `test/data-dir.test.js` registers tenants: two companies with the same names, each refused the other's files by full path, `../`, a link and a move; `*` and no tenant; email attachments, db-push and a local upload.
 - **One file at a time** (`--test-concurrency=1`): the database suites share the `xeplr_actions_test` database and race to create it when run side by side.
 - **Why:** these files used to carry a fixed host, port and password each (Postgres on `:5435`). On any other machine they all failed, so the pre-commit gate and CI ran only `test/*.test.js` and never this package's sub-folders. That is how `data-operation` shipped returning no rows (fixed in 1.4.2).
 

@@ -11,7 +11,6 @@
 var test = require('node:test');
 var assert = require('node:assert');
 var fs = require('fs');
-var os = require('os');
 var path = require('path');
 var zlib = require('zlib');
 var { Readable } = require('stream');
@@ -25,7 +24,8 @@ var actions = {
   formats: require('../../lib/formats')
 };
 
-var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-test-'));
+// Inside the tenant's own folder: an export is saved only there (lib/dataDir.js).
+var dir = fs.mkdtempSync(path.join(require('../../lib/dataDir').tenantFolder(), 'export-test-'));
 var out = function(name) { return path.join(dir, name); };
 
 var DOC = {

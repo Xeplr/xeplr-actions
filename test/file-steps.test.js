@@ -1,5 +1,7 @@
-// file-list, file-read, file-move and file-delete, on a real folder: they work inside the
-// folders an install names, and nowhere else.
+// file-list, file-read, file-move and file-delete, on a real folder: they work
+// inside the tenant's own folder under XEPLR_DATA_DIR, and nowhere else. This
+// process registers no tenancy, so its folder is <root>/<app>
+// (test/setup-data-dir.cjs); tenants are test/data-dir.test.js.
 var assert = require('node:assert');
 var { test } = require('node:test');
 var fs = require('fs');
@@ -11,9 +13,8 @@ var read = require('../lib/builtins/file/read');
 var move = require('../lib/builtins/file/move');
 var del = require('../lib/builtins/file/delete');
 
-var root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'xeplr-roots-')));
+var root = require('../lib/dataDir').tenantFolder();
 var outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'xeplr-outside-')));
-process.env.XEPLR_FILE_ROOTS = root;
 fs.mkdirSync(path.join(root, 'bank'));
 fs.writeFileSync(path.join(root, 'bank', 'Bank-2026-09.csv'), 'ref,amount,date\nA1,500,2026-09-02\nA2,20,2026-09-03\n');
 fs.writeFileSync(path.join(root, 'bank', 'Bank-2026-08.csv'), 'ref,amount\nB1,1\n');
@@ -58,27 +59,42 @@ test('read: a file that is not there, or an extension it cannot read, is refused
   assert.equal(odd.error.code, 'FORMAT_UNKNOWN');
 });
 
-test('nothing outside the allowed folders: not by path, not by ../, not by a link', async function() {
+test('nothing outside the tenant\'s folder: not by path, not by ../, not by a link, not an address', async function() {
   var direct = await runAction(read, { path: path.join(outside, 'secret.csv') });
   assert.equal(direct.error.code, 'PATH_NOT_ALLOWED');
-  assert.match(direct.error.message, /outside the folders file steps may use/);
+  assert.match(direct.error.message, /outside this company's folder/);
   var climb = await runAction(read, { path: path.join(root, 'bank', '..', '..', path.basename(outside), 'secret.csv') });
   assert.equal(climb.error.code, 'PATH_NOT_ALLOWED');
   fs.symlinkSync(outside, path.join(root, 'link'));
   var linked = await runAction(read, { path: path.join(root, 'link', 'secret.csv') });
   assert.equal(linked.error.code, 'PATH_NOT_ALLOWED');
-  var relative = await runAction(list, { folder: 'bank' });
-  assert.match(relative.error.message, /must be absolute/);
+  var named = await runAction(read, { path: '../../' + path.basename(outside) + '/secret.csv' });
+  assert.equal(named.error.code, 'PATH_NOT_ALLOWED');
+  var address = await runAction(read, { path: 'file:///etc/passwd' });
+  assert.equal(address.error.code, 'PATH_NOT_ALLOWED');
 });
 
-test('no folders configured: refused, naming the setting', async function() {
-  var saved = process.env.XEPLR_FILE_ROOTS;
-  delete process.env.XEPLR_FILE_ROOTS;
+test('a name is inside the tenant\'s folder: bank is <folder>/bank', async function() {
+  var res = await runAction(list, { folder: 'bank', pattern: '*.csv' });
+  assert.equal(res.status, 'success', res.error && res.error.message);
+  assert.ok(res.output.files.every(function(f) { return f.path.indexOf(path.join(root, 'bank') + path.sep) === 0; }));
+  var read1 = await runAction(read, { path: 'bank/Bank-2026-09.csv' });
+  assert.equal(read1.output.count, 2);
+});
+
+test('no data root: refused, naming the setting', async function() {
+  var saved = process.env.XEPLR_DATA_DIR;
   try {
-    var res = await runAction(list, { folder: root });
-    assert.match(res.error.message, /Set XEPLR_FILE_ROOTS/);
+    delete process.env.XEPLR_DATA_DIR;
+    var unset = await runAction(list, { folder: 'bank' });
+    assert.equal(unset.error.code, 'DATA_DIR_UNSET');
+    assert.match(unset.error.message, /XEPLR_DATA_DIR is not set/);
+    process.env.XEPLR_DATA_DIR = 'data';
+    assert.match((await runAction(list, { folder: 'bank' })).error.message, /must be an absolute folder/);
+    process.env.XEPLR_DATA_DIR = path.join(outside, 'not-there');
+    assert.match((await runAction(list, { folder: 'bank' })).error.message, /not a folder that exists/);
   } finally {
-    process.env.XEPLR_FILE_ROOTS = saved;
+    process.env.XEPLR_DATA_DIR = saved;
   }
 });
 
@@ -100,7 +116,7 @@ test('move: into a folder made on the way, keeping its name; again is refused; c
   assert.ok(fs.existsSync(src));
 });
 
-test('move: to a new name, and never out of the allowed folders', async function() {
+test('move: to a new name, and never out of the tenant\'s folder', async function() {
   var src = path.join(root, 'bank', 'notes.txt');
   var res = await runAction(move, { from: src, to: path.join(root, 'bank', 'Notes Sep 2026.txt') });
   assert.equal(res.output.name, 'Notes Sep 2026.txt');
