@@ -1,10 +1,10 @@
 {
   "name": "@xeplr/actions",
   "version": "1.5.0",
-  "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
+  "description": "Named-action registry with typed inputs and safe invocation \u2014 plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
   "scripts": {
-    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\""
+    "test": "node --test --test-concurrency=1 --require ./test/setup-data-dir.cjs \"test/**/*.test.js\""
   },
   "files": [
     "index.js",

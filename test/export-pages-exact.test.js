@@ -7,13 +7,12 @@
 var test = require('node:test');
 var assert = require('node:assert');
 var fs = require('fs');
-var os = require('os');
 var path = require('path');
 var zlib = require('zlib');
 var { runAction } = require('../lib/runner');
 var actions = { runAction: runAction, builtins: { exportPages: require('../lib/builtins/export/pages') } };
 
-var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-exact-'));
+var dir = fs.mkdtempSync(path.join(require('../lib/dataDir').tenantFolder(), 'export-exact-'));
 var out = function(name) { return path.join(dir, name); };
 
 test('export-pages: a page of an exact size, edge to edge, with nothing added', async function() {

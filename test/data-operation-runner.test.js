@@ -38,7 +38,7 @@ test('says its columns, in order and with their headings, in export-table\'s sha
   var fs = require('fs');
   var os = require('os');
   var path = require('path');
-  var file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dataop-')), 'out.csv');
+  var file = path.join(fs.mkdtempSync(path.join(require('../lib/dataDir').tenantFolder(), 'dataop-')), 'out.csv');
   var reordered = res.output.rows.map(function(r) { return { who: r.who, name: r.name, status: r.status }; });
   var exp = await runAction(require('../lib/builtins/export/table'), { format: 'csv', outputPath: file, rows: reordered, document: { columns: res.output.columns } });
   assert.equal(exp.status, 'success', exp.error && exp.error.message);

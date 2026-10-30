@@ -14,7 +14,6 @@
 var test = require('node:test');
 var assert = require('node:assert');
 var fs = require('fs');
-var os = require('os');
 var path = require('path');
 var fflate = require('fflate');
 
@@ -81,7 +80,8 @@ var SHEET = [
   [2904106, 'Says _x005F_x000D_ literally', 'LIT001', 1, 'IT']
 ];
 
-var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pasted-'));
+// Inside the tenant's own folder: a local file is read only from there.
+var dir = fs.mkdtempSync(path.join(require('../../lib/dataDir').tenantFolder(), 'pasted-'));
 var FILE = path.join(dir, 'costing.xlsx');
 // A Japanese cell with its furigana (<rPh>): the reading is not the value.
 writeXlsx(FILE, SHEET.concat([[2904107, { extra: true }, 'JP001', 1, 'IT']]),

@@ -56,5 +56,12 @@ module.exports = {
   // lib/uploader/attach.js. configRequiredEnv spreads into the app's own
   // env.required.js, same convention as @xeplr/auth's requiredEnv.
   attachConfig:      configDb.attachConfig,
-  configRequiredEnv: configDb.requiredEnv
+  configRequiredEnv: configDb.requiredEnv,
+
+  // WHERE FILES ARE: XEPLR_DATA_DIR, one folder per tenant under it
+  // (<root>/<app>/<mtId1>/…). requiredEnv spreads into the app's
+  // env.required.js — the root is never defaulted. dataDir.resolve(name)
+  // is the one check every file path goes through (lib/dataDir.js).
+  requiredEnv:       require('./lib/dataDir').requiredEnv,
+  dataDir:           require('./lib/dataDir')
 };
