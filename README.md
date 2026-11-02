@@ -64,10 +64,12 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 |---|---|
 | `register(def)` / `register(name, def)` | Add an action. Throws without `name` or `execute`, or with a `requires` module that is not installed (`ActionMissingDependencyError`). Re-registering a name replaces it. |
 | `get(name)` / `has(name)` | Look one up. |
-| `list()` | `[{ name, description, inputSchema, outputSchema, requires, event }]` — serializable, for an actions endpoint. `event` is `null` for an ordinary action. |
+| `list()` | `[{ name, description, inputSchema, outputSchema, requires, event, preview, example }]` — serializable, for an actions endpoint. `event` is `null` for an ordinary action; `preview` is `true` when the action can be previewed (the function itself never leaves the process). |
 | `clear()` | Empty the registry. |
 | `runAction({ name, input, system?, timeoutMs? })` | Run a registered action. Never throws. |
 | `runAction(nameOrDef, input, { system, timeoutMs, metaStore }?)` | Same, by name or with an action module directly. |
+| `previewAction({ name, input, system? })` / `previewAction(nameOrDef, input, opts?)` | What the step **would** hand on, without running it — see [Previews](#previews-what-a-step-would-hand-on). Never calls `execute`. Never throws. |
+| `PREVIEW_ROWS` | `5`: how many rows or items a preview reads. |
 | `ActionNotRegisteredError` | Returned (in `error`) for an unknown name. |
 | `ActionMissingDependencyError` | Thrown by `register()` for a missing `requires` module. |
 | `TransientError` | For an action to signal "retry me". Nothing in this package (or `@xeplr/jobs`) acts on it yet. |
@@ -89,6 +91,8 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 | `description` | Text for pickers. |
 | `inputSchema` | `[{ name, type, required, default, description, order, ... }]`, validated by `@xeplr/schema-handler` `applySchema`. Built-ins also use `group`, `showWhen`, `system`, `options`, `optionsFrom`, `dependsOn`, `label`, `hidden` (left out of a form unless a value is already set), `suggestFrom` / `suggestWith` (a host option source that suggests values, asked with the named sibling inputs; `db-procedure`'s parameters ask `procedureParams` with the connection, database and procedure) and `control` (`'parameters'`: `[{ name, value }]` shown as rows, a value fixed or bound to the run's window: `{window.from}` / `{window.to}`, see `@xeplr/jobs`) — hints for a form; validation treats every field the same. |
 | `outputSchema` | Optional documentation of the return value. |
+| `preview({ input, system })` | Optional. Resolves to `{ output, rows? }`: what `execute` would return, read **without a side effect** — at most `PREVIEW_ROWS` rows or items, never a write, a send, a move or a delete. Only for an action that can read safely. |
+| `example` | Optional. For an action that writes or sends: its output with example values, so a designer can show the shape without running it. |
 | `requires` | Module names checked with `require.resolve` at `register()`. |
 | `execute({ input, system, metaStore })` | Returns (or resolves to) the output. |
 | `event` | Optional. Makes this a **screen function** rather than a step: the event it is written for — `beforeLoad`, `beforeSave`, `afterSave`, `beforeDelete`, `onError` (run by `@xeplr/factory` around a screen's records) or `decide` (run by `@xeplr/workflow-engine` to choose a flow's next step). A screen names one per event and pickers offer only the functions for that event. It is called with the event's context — `execute(ctx)`, not `{ input, system }` — and never as a workflow step. |
@@ -100,6 +104,26 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 ```
 
 An unknown action, invalid input, a thrown or rejected `execute`, and a timeout (`timeoutMs`, message `Action timed out after Nms`) all come back as `status: 'failed'`. A timeout does not cancel the running work.
+
+### Previews: what a step would hand on
+
+A workflow designer shows a step's output before anything has run, so later steps can pick from it. Typing an example by hand was the only way, even where the output can simply be read. `previewAction` reads it instead, and **only ever calls an action's `preview`, never its `execute`**:
+
+```js
+{ status: 'success' | 'example' | 'failed', output, rows, error, durationMs }
+```
+
+- `success`: `output` is what the step would hand on (its shape, sample values); `rows` the first few rows or items when it reads some.
+- `example`: the action has no preview (it writes or sends); `output` is its declared `example`, or `null`. **Nothing ran.**
+- `failed`: the input is incomplete or the read failed; `error` says which.
+
+The input is checked exactly as a run checks it.
+
+| previewed (reads, up to 5) | example only (writes or sends; never run) |
+|---|---|
+| `db-fetch` (through the run's own cursor, then stops; nothing spooled), `db-list-tables` / `-views` / `-procedures` / `-columns`, `file-list`, `file-read`, `data-operation` (the run itself: it only computes), `email-read` (the mailbox opened **read-only**, IMAP `EXAMINE`, so nothing is marked read) | `file-move`, `file-delete`, `email-send`, `email-move`, `email-delete`, `email-download-email`, `email-download-attachments`, `export-table`, `export-pages`, `db-procedure` (a procedure may write) |
+
+Neither: `db-push`, `db-move`, `http-request` (an outside system, which may change something), `spawn-program`, `file-upload`; a designer asks for an example by hand. `test/previews.test.js` checks it on a real folder, file and Postgres: five rows read and no file spooled, the real count kept, a deleting step's file still there.
 
 ## Built-in actions
 
