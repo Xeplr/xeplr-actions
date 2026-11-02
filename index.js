@@ -21,6 +21,10 @@ module.exports = {
   //   runAction({ name, input, system?, timeoutMs? })
   //   runAction(nameOrAction, input, opts?)
   runAction:     runner.runAction,
+  // What a step would hand on, read without a side effect (an action's
+  // `preview`), or its declared example. Never runs `execute`.
+  previewAction: runner.previewAction,
+  PREVIEW_ROWS:  runner.PREVIEW_ROWS,
 
   // Saved connections: an id in the definition, the login only in the call.
   // Shared by @xeplr/jobs and @xeplr/workflow-engine. See lib/connections.js.
