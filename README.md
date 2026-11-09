@@ -582,6 +582,32 @@ await driver.query(pool, userSql, params)          // reads only
 
 **Values are bound, never written into SQL.** On MySQL, `stringifyObjects` is always on, so an object or array passed as a value is compared as text instead of being expanded into `key = value` pairs. **Procedure parameter names** are written into the call (`@region = @p0`, `region => $1`) and must be plain names — letters, digits and `_`.
 
+## Stopping a query — the stop reaches the database
+
+A query nobody is waiting for must not keep running. Every driver's `query` and `fetchStream` take a stop signal and a time limit:
+
+```js
+const stop = new AbortController()
+await driver.query(pool, sql, params, { signal: stop.signal, timeoutMs: 120000 })
+for await (const row of driver.fetchStream(pool, { sql, params, signal: stop.signal, timeoutMs: 120000 })) { … }
+stop.abort(new Error('Nobody is waiting for this'))   // cancels it IN THE DATABASE
+```
+
+- **A stop cancels the query in the database, not just our read.** A `GROUP BY` or `ORDER BY` is worked out in full before the first row comes back, so a stop that only ended our read loop left the database working, holding its CPU and a connection, until it finished.
+- **The two errors:** `code: 'QUERY_STOPPED'`, whose message is the signal's reason; and `code: 'QUERY_TIMEOUT'`, "The database stopped this query after 2 minutes, its time limit…".
+- **A signal that has already fired:** the query is never sent.
+- **Neither option given:** the query runs exactly as before.
+
+| Driver | How it is stopped | Time limit |
+|---|---|---|
+| postgres | `pg_cancel_backend(<the query's backend>)`, sent on a connection of its own, so a pool whose connections are all busy (often with the very queries being stopped) cannot block it. The stopped query's connection is destroyed, not reused | `statement_timeout`, enforced by Postgres even if this process dies. For `fetchStream` it applies to each FETCH. On a writable connection it is set for the query and reset after, without adding a transaction |
+| duckdb | `interrupt()` on the query's own connection. A query still waiting for a free connection is let go before it runs | a timer that interrupts the same way |
+| mssql | `request.cancel()`, an attention on the query's own connection | a timer that cancels the same way (SQL Server has no per-statement limit) |
+| mysql | `KILL QUERY <thread id>`, sent on a connection of its own. The stopped query's connection is destroyed | a timer that kills the same way (`max_execution_time` covers SELECTs only, and MariaDB names it differently) |
+| mongo | not yet | — |
+
+The tests prove that the database itself let go: Postgres by `pg_stat_activity`, SQL Server by `sys.dm_exec_requests`, MySQL by the processlist, and DuckDB by its one connection answering at once (`test/drivers/stop.*.test.js`). The SQL Server and MySQL ones run when `MSSQL_*` and `MYSQL_*` are set.
+
 ## Rules the code enforces, and why
 
 | rule | why |
