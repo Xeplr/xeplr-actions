@@ -1,7 +1,7 @@
 {
   "name": "@xeplr/actions",
   "version": "2.2.1",
-  "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
+  "description": "Named-action registry with typed inputs and safe invocation \u2014 plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
   "scripts": {
     "test": "node --test --test-concurrency=1 --require ./test/setup-data-dir.cjs \"test/**/*.test.js\""
@@ -42,6 +42,7 @@
     "@duckdb/node-api": "1.5.5-r.3",
     "@xeplr/db": "^1.1.0",
     "@xeplr/email": "^1.0.0",
+    "@xeplr/push": "^1.0.0",
     "@xeplr/utils": "^1.0.0",
     "csv-parse": "^7.0.2",
     "dejavu-fonts-ttf": "^2.37.3",
@@ -61,61 +62,64 @@
     "unzipper": "^0.12.5"
   },
   "peerDependenciesMeta": {
-    "@xeplr/utils": {
-      "optional": true
-    },
     "@duckdb/node-api": {
-      "optional": true
-    },
-    "knex": {
-      "optional": true
-    },
-    "pg": {
-      "optional": true
-    },
-    "mysql2": {
-      "optional": true
-    },
-    "mssql": {
-      "optional": true
-    },
-    "mongodb": {
-      "optional": true
-    },
-    "exceljs": {
-      "optional": true
-    },
-    "unzipper": {
-      "optional": true
-    },
-    "saxes": {
-      "optional": true
-    },
-    "csv-parse": {
-      "optional": true
-    },
-    "imapflow": {
-      "optional": true
-    },
-    "mailparser": {
-      "optional": true
-    },
-    "nodemailer": {
-      "optional": true
-    },
-    "ssh2-sftp-client": {
       "optional": true
     },
     "@xeplr/email": {
       "optional": true
     },
+    "@xeplr/push": {
+      "optional": true
+    },
+    "@xeplr/utils": {
+      "optional": true
+    },
+    "csv-parse": {
+      "optional": true
+    },
+    "dejavu-fonts-ttf": {
+      "optional": true
+    },
+    "exceljs": {
+      "optional": true
+    },
     "fflate": {
+      "optional": true
+    },
+    "imapflow": {
+      "optional": true
+    },
+    "knex": {
+      "optional": true
+    },
+    "mailparser": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    },
+    "mssql": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    },
+    "nodemailer": {
       "optional": true
     },
     "pdfkit": {
       "optional": true
     },
-    "dejavu-fonts-ttf": {
+    "pg": {
+      "optional": true
+    },
+    "saxes": {
+      "optional": true
+    },
+    "ssh2-sftp-client": {
+      "optional": true
+    },
+    "unzipper": {
       "optional": true
     }
   },
