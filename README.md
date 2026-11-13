@@ -138,6 +138,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `dbFetch` | `db-fetch` | Stream rows from a table (`mode: 'table'`) or SQL (`mode: 'query'`, `params`). Default `streaming_mode: true` → NDJSON file `{ filePath, format: 'jsonl', bytes, rows }`; `false` → `{ rows, rowCount }`. |
 | `dbPush` | `db-push` | Write `rows` or an NDJSON `filePath` into `targetTable` through the uploader. `primaryKeys` → upsert. |
 | `dbMove` | `db-move` | One window of rows from a source table, query or procedure into a target table in one streamed pass. See [db-move](#db-move). |
+| `dbDump` | `db-dump` | A whole database to one backup file with its own dump program: `pg_dump -Fc` (Postgres, `.dump`) or `mysqldump` (MySQL, `.sql.gz`). See [Backups](#backups-db-dump-and-s3-upload). |
 | `dbProcedure` | `db-procedure` | Call a stored procedure; returns `{ rows, rowCount, procedure, sql }`. See [db-procedure](#db-procedure). |
 | `dbListTables` | `db-list-tables` | `{ tables }` — base tables in a schema/database. |
 | `dbListViews` | `db-list-views` | `{ views }`. |
@@ -152,6 +153,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `emailDownloadEmail` | `email-download-email` | Stream the raw message to an `.eml` file, named by `fileName`. `{ count, saved[], path, existing[] }`. |
 | `emailDownloadAttachments` | `email-download-attachments` | Save attachments, optionally filtered by `extension` / `filenameContains`, named by `fileName` (see [Saving files](#saving-files-names-and-a-name-already-taken)). `{ count, saved[], path, skipped, existing[] }`. |
 | `fileList` | `file-list` | The files in a folder, optionally matching `pattern` (`*.csv`, `Bank-2026-??.pdf`), sorted by name or date. `{ files[{ name, path, size, modifiedAt }], count }`. "Is it there?" is the exact name and `count`. See [Where files are](#where-files-are-one-data-root-a-folder-per-tenant). |
+| `s3Upload` | `s3-upload` | One file to an S3 bucket (or an S3-compatible `endpoint`), in parts, with a SHA-256 checksum. Only writes. See [Backups](#backups-db-dump-and-s3-upload). |
 | `fileRead` | `file-read` | A CSV, text, Excel, JSON or NDJSON file as rows (format from the extension). `{ rows, count, columns, truncated }`, at most `maxRows` (50,000). |
 | `fileMove` | `file-move` | Move or copy a file into a folder (made if missing) or to a new name; `ifExists` as every saving step. `{ path, name, moved, skipped }`. |
 | `fileDelete` | `file-delete` | Delete one file, **permanently** (no trash; `file-move` to a "processed" folder is the reversible one). Never a folder. `ifMissing`: `fail` (default) or `skip`. `{ path, deleted, skipped }`. |
@@ -205,6 +207,60 @@ For `mode: 'table'` the source's declared column types (`getTableSchema`) are pa
 `email-send`: `to` / `cc` / `bcc` accept a bare string. `templateName` + `templateVars` render a stored template via `@xeplr/email` (the host must have called its `initTemplates()`), replacing any subject, html and text on the step. Attachments are nodemailer descriptors, so `saved[]` from `email-download-attachments` can be passed straight in.
 
 Message ids are IMAP UIDs **scoped to `folder`**, and a move changes the id — download and delete before moving.
+
+## Backups: `db-dump` and `s3-upload`
+
+A database's backup is two steps: dump it to a file, then send the file away.
+
+```js
+var dumped = await runAction({ name: 'db-dump', input: {
+  dbType: 'postgres', connectionInfoId: 'main-server',   // the server's login, resolved by the host
+  database: 'shop'
+} })
+// → { filePath: '<tenant>/backups/shop-2026-11-13T02-00-05.dump', fileName, bytes, sha256, dbType, database, durationMs }
+
+await runAction({ name: 's3-upload', input: {
+  connectionInfoId: 'backup-bucket',                      // { bucket, region, accessKeyId, secretAccessKey, prefix? }
+  filePath: dumped.output.filePath, deleteAfter: true
+} })
+// → { bucket, key: 'backups/shop-2026-11-13T02-00-05.dump', bytes, etag, versionId, deleted: true }
+```
+
+**db-dump**
+
+| input | |
+|---|---|
+| `dbType` | `postgres` or `mysql`. `mssql` is refused: not supported yet. |
+| `connection` | The server's login `{ host, port, user, password }`. |
+| `database` | Required: which database on that server. |
+| `folder` | In the tenant's folder; default `backups`. |
+| `fileName` | Default `<database>-<UTC time>.dump` (Postgres) or `.sql.gz` (MySQL). A name, not a path. |
+
+- **Postgres:** `pg_dump -Fc --no-owner --no-acl` — the custom format, already compressed, restored with `pg_restore`. `pg_dump` must be **at least the server's version** (it refuses an older one, and the step says so).
+- **MySQL / MariaDB:** `mysqldump --single-transaction --quick --routines --triggers --events --databases <db>`, gzipped as it is written.
+- **No shell, ever.** The program is run with an argument list built here; the password goes in its environment (`PGPASSWORD`, `MYSQL_PWD`), never on the command line where `ps` shows it. A database, host or user starting with `-` is refused (it would be read as an option).
+- **Written under `<name>.partial`, renamed only when the program ends cleanly.** A failure removes it and fails the step with the end of what the program said, the password taken out. A program that is not installed is named ("pg_dump is not installed on this server").
+- `system.signal` stops it (the program is killed); `system.onProgress({ bytes })` every second.
+
+**s3-upload**
+
+| input | |
+|---|---|
+| `connection` | `{ bucket, region, accessKeyId, secretAccessKey, prefix?, sessionToken?, endpoint?, forcePathStyle? }`. Without `accessKeyId` the SDK's own chain is used (an EC2 role). `endpoint` for an S3-compatible store. |
+| `filePath` | The file, in the tenant's folder. |
+| `key` | Default `<prefix>/<file name>`. |
+| `deleteAfter` | `true`: the local file is deleted once it is uploaded. |
+| `contentType` | Default `application/octet-stream`. |
+
+- **Streamed in 16 MB parts** (`@aws-sdk/lib-storage`), so any size needs little memory. Every part carries a **SHA-256 checksum** — required by a bucket with Object Lock, and checked by S3.
+- **It only writes.** No list, get or head of the bucket, so the key it uses needs `s3:PutObject` and `s3:AbortMultipartUpload` (a failed upload is aborted) on the prefix, and nothing else:
+
+  ```json
+  { "Effect": "Allow", "Action": ["s3:PutObject", "s3:AbortMultipartUpload"], "Resource": "arn:aws:s3:::<bucket>/backups/*" }
+  ```
+- Peers, optional: `@aws-sdk/client-s3` and `@aws-sdk/lib-storage` (`^3`). Missing → the step says to install them.
+
+`test/backup/` checks both: the dump programs with a stand-in on `PATH` (arguments, password only in the environment, a failure leaving no file), a real `pg_dump` restored with `pg_restore --list` when Postgres is here, and the upload against an S3 stand-in (one PUT, then parts, a SHA-256 checksum, never a read).
 
 ## Data operation
 

@@ -1,7 +1,7 @@
 {
   "name": "@xeplr/actions",
   "version": "2.2.2",
-  "description": "Named-action registry with typed inputs and safe invocation — plus built-in actions for HTTP, DB, files, email, spawn",
+  "description": "Named-action registry with typed inputs and safe invocation \u2014 plus built-in actions for HTTP, DB, files, email, spawn",
   "main": "index.js",
   "scripts": {
     "test": "node --test --test-concurrency=1 --require ./test/setup-data-dir.cjs \"test/**/*.test.js\""
@@ -39,6 +39,8 @@
     "@xeplr/schema-handler": "^1.0.0"
   },
   "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/lib-storage": "^3.0.0",
     "@duckdb/node-api": "1.5.5-r.3",
     "@xeplr/db": "^1.1.0",
     "@xeplr/email": "^1.0.0",
@@ -62,6 +64,12 @@
     "unzipper": "^0.12.5"
   },
   "peerDependenciesMeta": {
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@aws-sdk/lib-storage": {
+      "optional": true
+    },
     "@duckdb/node-api": {
       "optional": true
     },
@@ -124,6 +132,8 @@
     }
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1168.0",
+    "@aws-sdk/lib-storage": "^3.1168.0",
     "@duckdb/node-api": "^1.5.5-r.3",
     "@xeplr/db": "^1.1.0",
     "@xeplr/utils": "^1.0.0",
