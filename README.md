@@ -122,7 +122,7 @@ The input is checked exactly as a run checks it.
 
 | previewed (reads, up to 5) | example only (writes or sends; never run) |
 |---|---|
-| `db-fetch` (through the run's own cursor, then stops; nothing spooled), `db-list-tables` / `-views` / `-procedures` / `-columns`, `file-list`, `file-read`, `data-operation` (the run itself: it only computes), `email-read` (the mailbox opened **read-only**, IMAP `EXAMINE`, so nothing is marked read) | `file-move`, `file-delete`, `email-send`, `push-send`, `email-move`, `email-delete`, `email-download-email`, `email-download-attachments`, `export-table`, `export-pages`, `db-procedure` (a procedure may write) |
+| `db-fetch` (through the run's own cursor, then stops; nothing spooled), `db-list-tables` / `-views` / `-procedures` / `-columns` / `-foreign-keys`, `file-list`, `file-read`, `data-operation` (the run itself: it only computes), `email-read` (the mailbox opened **read-only**, IMAP `EXAMINE`, so nothing is marked read) | `file-move`, `file-delete`, `email-send`, `push-send`, `email-move`, `email-delete`, `email-download-email`, `email-download-attachments`, `export-table`, `export-pages`, `db-procedure` (a procedure may write) |
 
 Neither: `db-push`, `db-move`, `http-request` (an outside system, which may change something), `spawn-program`, `file-upload`; a designer asks for an example by hand. `test/previews.test.js` checks it on a real folder, file and Postgres: five rows read and no file spooled, the real count kept, a deleting step's file still there.
 
@@ -144,6 +144,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `dbListViews` | `db-list-views` | `{ views }`. |
 | `dbListProcedures` | `db-list-procedures` | `{ procedures }` (functions excluded). |
 | `dbListColumns` | `db-list-columns` | `{ columns }` — `name`, `dataType`, `udtName` and `maxLength` (characters; `-1` is SQL Server `(max)`, `null` when it has none) for one table. |
+| `dbListForeignKeys` | `db-list-foreign-keys` | `{ foreignKeys }` — each foreign key between the tables of a schema/database: `{ name, table, columns, refTable, refColumns }`, a composite key's columns in key order. Only keys whose **both** tables are in the schema `db-list-tables` lists, so every name is one it returns. Postgres (`public`), MySQL (the connection's database), SQL Server (every schema unless `schema`), DuckDB (`main`). What the BI dataset canvas joins two tables on without asking. |
 | `fileUpload` | `file-upload` | Read a file (`sourceType`, `sourcePath`), parse it (`format`), load it into `targetTable` (`dbType`, `dbConnection`) as a New table, Append or Replace (`mode`, see [Import modes](#import-modes)). Passes `system.onProgress` (`{ rowsRead, batches, rowsWritten }`, per batch) and `system.signal` (stop) to the uploader, as `db-move` does. |
 | `sendEmail` | `email-send` | Send one message. See [Email](#email). |
 | `pushSend` | `push-send` | A push notification on people's phones and computers, even with the app closed, by `emails` and/or `userIds`: `title` (required), `body`, `url` (a page of the app a tap opens), `tag`. Returns `{ devices, sent, removed, failed }`. Through [`@xeplr/push`](https://www.npmjs.com/package/@xeplr/push), which the host sets up. |
