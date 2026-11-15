@@ -48,6 +48,7 @@ module.exports = {
   uploader:      uploader,
   // The uploader's own tables (_import_errors, __xeplr_staging, __xeplr_loads), to leave out of table pickers.
   isInternalTable: require('./lib/drivers/db/internalTables').isInternalTable,
+  isInternalColumn: require('./lib/drivers/db/internalTables').isInternalColumn,
   inferColumns:  uploader.inferColumns,
   streaming:     streaming,
   drivers:       { db: dbDrivers, file: fileDrivers },

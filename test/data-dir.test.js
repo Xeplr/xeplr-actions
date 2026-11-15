@@ -47,7 +47,9 @@ test('one company never reaches another\'s: not by full path, ../, a link, or a 
   assert.equal(climb.error.code, 'PATH_NOT_ALLOWED');
   var otherWs = await as(BETA, function() { return runAction(list, { folder: '../ws2' }); });
   assert.equal(otherWs.error.code, 'PATH_NOT_ALLOWED');
-  await as(BETA, function() { fs.symlinkSync(path.join(ROOT, 'xeplr-actions-test', 'acme'), path.join(dataDir.tenantFolder(), 'acme-link')); });
+  // A link a previous run left (the data root is shared) is removed first —
+  // only the link; its target is untouched.
+  await as(BETA, function() { fs.rmSync(path.join(dataDir.tenantFolder(), 'acme-link'), { force: true }); fs.symlinkSync(path.join(ROOT, 'xeplr-actions-test', 'acme'), path.join(dataDir.tenantFolder(), 'acme-link')); });
   var linked = await as(BETA, function() { return runAction(read, { path: 'acme-link/ws1/bank/sept.csv' }); });
   assert.equal(linked.error.code, 'PATH_NOT_ALLOWED');
   var stolen = await as(BETA, function() { return runAction(move, { from: acmeFile, to: 'bank/' }); });
