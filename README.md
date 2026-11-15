@@ -80,7 +80,8 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 | `streaming` | `{ spool, resume, readBatchFile, checkpoint }` — rows to rotating NDJSON batch files with ordered hooks and resumable checkpoints. |
 | `drivers.db` | `{ getDriver(type), checkDriverRequires, SUPPORTED }` — `postgres`, `mysql`, `mssql`, `mongo`, `duckdb`. |
 | `drivers.file` | `{ getSource(type), checkSourceRequires, SUPPORTED }` — `local`, `sharepoint`, `google`, `sftp`. |
-| `formats` | `{ getFormat(type), checkFormatRequires, SUPPORTED }` — `excel`, `csv`, `txt`, `json`. |
+| `formats` | `{ getFormat(type), checkFormatRequires, SUPPORTED }` — `excel`, `csv`, `txt`, `json`, `parquet`. |
+| `parquet` | `{ open, writeAll, readRows, columnsOf, isParquet }` — rows to a folder of Parquet parts and back, through DuckDB. See [Parquet](#parquet-the-hand-off-to-python-and-warehouses). |
 | `attachConfig({ service, applicationId? })` | Connect to the shared `xeplr_configs` database; see [Movement metadata](#movement-metadata-xeplr_configs). |
 | `configRequiredEnv` | `['XCFG_DB_NAME']` — spread into your app's required-env list. |
 
@@ -133,10 +134,10 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | key | action name | does |
 |---|---|---|
 | `dataOperation` | `data-operation` | From a list of rows, make the list the next step needs — keep some rows, pick and rename columns, compute new ones, sort, optionally render. See [Data operation](#data-operation). |
-| `exportTable` | `export-table` | Rows to a **CSV, Excel (.xlsx) or PDF** file. See [Export](#export). |
+| `exportTable` | `export-table` | Rows to a **CSV, Excel (.xlsx), PDF or Parquet** file. See [Export](#export). |
 | `exportPages` | `export-pages` | Pages of placed blocks (text, tables, images, shapes) to a PDF — a dashboard as it looked. See [Export](#export). |
-| `dbFetch` | `db-fetch` | Stream rows from a table (`mode: 'table'`) or SQL (`mode: 'query'`, `params`). Default `streaming_mode: true` → NDJSON file `{ filePath, format: 'jsonl', bytes, rows }`; `false` → `{ rows, rowCount }`. |
-| `dbPush` | `db-push` | Write `rows` or an NDJSON `filePath` into `targetTable` through the uploader. `primaryKeys` → upsert. |
+| `dbFetch` | `db-fetch` | Stream rows from a table (`mode: 'table'`) or SQL (`mode: 'query'`, `params`). Default `streaming_mode: true` → NDJSON file `{ filePath, format: 'jsonl', bytes, rows }`; with `format: 'parquet'` a folder of typed Parquet parts `{ filePath, format: 'parquet', parts, bytes, rows }` (see [Parquet](#parquet-the-hand-off-to-python-and-warehouses)); `false` → `{ rows, rowCount }`. |
+| `dbPush` | `db-push` | Write `rows`, or a `filePath` — NDJSON, a `.parquet` file or a folder of Parquet parts — into `targetTable` through the uploader. A Parquet source declares its column types, so the target gets them instead of types guessed from values. `primaryKeys` → upsert. |
 | `dbMove` | `db-move` | One window of rows from a source table, query or procedure into a target table in one streamed pass. See [db-move](#db-move). |
 | `dbDump` | `db-dump` | A whole database to one backup file with its own dump program: `pg_dump -Fc` (Postgres, `.dump`) or `mysqldump` (MySQL, `.sql.gz`). See [Backups](#backups-db-dump-folder-archive-and-s3-upload). |
 | `dbProcedure` | `db-procedure` | Call a stored procedure; returns `{ rows, rowCount, procedure, sql }`. See [db-procedure](#db-procedure). |
@@ -446,6 +447,7 @@ Decided for the whole step before anything is written, so `fail` never leaves ha
 | `csv` | RFC 4180; a UTF-8 byte-order mark so Excel reads `₹` and accents; a text cell starting with `= + - @` gets a leading `'` (no formula injection; numbers untouched) | `values` |
 | `xlsx` | numbers and dates as **real typed cells carrying the column's Excel number format** (`"₹"#,##0.00`, `0.0%`, `mmm yyyy`, `#,##0.0,,"M"`), so the sheet looks like the screen and still sums; an optional title and subtitle; a bold, frozen header with an autofilter; bold subtotals and a tinted total row; column widths from the first 200 rows. Excel's 1,048,576-row limit is respected (`truncated`) | `values` |
 | `pdf` | each cell exactly as displayed, numbers right-aligned by `align`, header repeated on every page, landscape past 6 columns, "Page x of y", bold or tinted total rows. Capped at 5,000 rows (`maxRows`) with a closing note | `display` |
+| `parquet` | one `.parquet` file of the raw values, typed (numbers, dates, booleans as themselves), the headers as column names (a repeated header gets ` (2)`). For pandas, DuckDB or a warehouse — see [Parquet](#parquet-the-hand-off-to-python-and-warehouses) | `values` |
 
 ```js
 await runAction(builtins.exportTable, {
@@ -479,7 +481,50 @@ await runAction(builtins.exportTable, {
 
 What it is given is assumed to come from a browser, so it is bounded: 50 pages, 200 blocks a page, 8 MB per image, 500 table rows, and 5,000 characters of text. An image that will not decode draws a note in its box instead of failing the whole file.
 
-Peers (optional, needed only by the format used): `fflate` for xlsx; `pdfkit` and `dejavu-fonts-ttf` for pdf. `writers` (`getWriter`, `INFO`, `SUPPORTED`) is exported for code that wants a writer without the action.
+Peers (optional, needed only by the format used): `fflate` for xlsx; `pdfkit` and `dejavu-fonts-ttf` for pdf; `@duckdb/node-api` for parquet. `writers` (`getWriter`, `INFO`, `SUPPORTED`) is exported for code that wants a writer without the action.
+
+## Parquet: the hand-off to Python and warehouses
+
+For moving rows between programs — Node to a Python model and back, or into a warehouse — NDJSON is the wrong file: every row repeats every column name, numbers are text, and a date comes back a string the reader has to guess. **Parquet** is stored by column and compressed (typically several times smaller), keeps each column's type, and pandas, pyarrow and DuckDB read it many times faster. It is written **by DuckDB** (already a peer here), not by a JavaScript Parquet library: native, multi-threaded, and correct on dates, timestamps and decimals.
+
+**A stream becomes a folder of parts.** A Parquet file cannot be appended to and is unreadable until its last byte (its index is written at the end), so rows stream into a folder:
+
+```
+<folder>/part-00001.parquet    partRows rows each (default 100,000)
+<folder>/part-00002.parquet
+<folder>/_done                 written last: { rows, parts }
+```
+
+Rows go into a table in a DuckDB of their own, in memory; at `partRows` it is copied out as the next part and emptied. **Memory stays about one part, whatever the total, and each row is written to disk once.** A part is written under a dot-name and renamed when whole, so a reader never sees half of one. Every reader takes the folder as one table and ignores `_done`:
+
+```python
+df = pandas.read_parquet('<folder>')                     # pandas / pyarrow
+duckdb.sql("SELECT * FROM '<folder>/*.parquet'")         # DuckDB
+```
+
+Keep parts large (the default): thousands of tiny parts cost a file open each, which on a network disk (EFS) is a round trip.
+
+```js
+var p = actions.parquet;
+var done = await p.writeAll(rows, { dir, columns?, partRows?, signal? });
+// → { path, parts: ['part-00001.parquet', …], rows, bytes, columns }
+for await (var row of p.readRows(done.path)) { … }        // a file or a folder
+await p.columnsOf(done.path);                              // [{ name, type }]
+var w = p.open({ dir }); await w.write(row); …; await w.close();   // or abort()
+```
+
+`{ file }` instead of `{ dir }` writes one file at close, its rows held until then — for a bounded export (`export-table`), not a stream.
+
+**Types.** `columns: [{ name, type }]` (the logical types every driver speaks) are used as given; otherwise they are inferred from the first `scanRows` (1,000) rows by the uploader's own inference. A value lands as it would in a DuckDB table — the DuckDB driver's type map and coercion are used as they are: `number` → DOUBLE, `datetime` → TIMESTAMPTZ, `date` → DATE, `boolean`, objects and arrays → JSON (read back as their text). `db-fetch` with `mode: 'table'` declares the table's own types, so a Postgres `numeric` (which reaches node as a string) is a number in the file, not text.
+
+**Refused, never bent:**
+- A value that does not fit its column fails the write — `Row 6: column "amount" (number) cannot hold "twelve"` (`code: 'PARQUET_ROW'`).
+- A field no earlier row had fails it too: a folder has one set of columns, and dropping a field quietly is worse than stopping. Declare the columns when the first rows do not show them all.
+- A failed or stopped write (`signal` → `code: 'STOPPED'`) removes the parts it wrote and writes no `_done`.
+
+Our bookkeeping columns (`__xeplr_id__`, `__xeplr_movement_id__`) never come along, as in every load. No rows with declared columns gives one empty part (a reader still finds the columns); no rows and none declared gives only `_done`, which reads as empty.
+
+In a workflow: `db-fetch` (`format: 'parquet'`) → the step that reads it → `db-push` (`filePath`: the folder). `export-table` with `format: 'parquet'` writes one typed file under the headers as column names (made unique).
 
 ## Uploader
 
@@ -592,6 +637,7 @@ Upserts need no index: they are staged and match keys in the move. A read-only o
 | `csv` | stream | `formatConfig`: `columns` (default first row), `delimiter` (`,`), `cast` (true), `skipEmptyLines`, `trim`. |
 | `excel` | file path | `.xlsx` via `unzipper` + `saxes`; `sheet`, `startRow`. Date-styled cells arrive as `Date`. Excel's own escapes in cell text are decoded (`_x000D_` → a real line break; `_x005F_` → `_`), and Japanese phonetic runs (`<rPh>`, furigana) are not joined into the value. |
 | `json` | stream | A JSON array or NDJSON; buffers the whole file. |
+| `parquet` | file path | A `.parquet` file or a folder of parts, streamed a chunk at a time through DuckDB (`@duckdb/node-api`). Typed: no `formatConfig`. |
 | `txt` | — | Placeholder, not implemented. |
 
 **Rows pasted into one cell** (`lib/formats/pastedRows.js`). Data copied out of an ERP and pasted into Excel: a value starting with `"` (an inch mark) makes Excel put everything up to the next `"` — tabs, line breaks, whole rows — into that one cell. The rows it swallowed exist nowhere else. Seen for real: 465 rows folded into 11 cells.
@@ -735,6 +781,7 @@ node --test test/uploader/reconcile.test.js
 - **No `*_HOST`:** that database's tests are **skipped**, and each says which settings run it.
 - **`*_HOST` set:** they run, and a login the database refuses **fails** them. A configured run never passes by not connecting.
 - **A data root and an application per test process** (`--require ./test/setup-data-dir.cjs`, in `npm test`, CI, and the gate through `@flags` on `test/data-dir.test.js`), as an app has at boot. `test/data-dir.test.js` registers tenants: two companies with the same names, each refused the other's files by full path, `../`, a link and a move; `*` and no tenant; email attachments, db-push and a local upload.
+- **Parquet** (`test/formats/parquet.test.js`): parts written and read back by DuckDB's own Parquet reader — 300,000 rows in parts, declared and inferred types, a bad value and a stray column refused, a stop leaving nothing, `export-table` and `file-upload`. `test/builtins/parquet-pg.test.js` takes a real Postgres table through `db-fetch` → Parquet → `db-push` and checks the new table's types and every row.
 - **One file at a time** (`--test-concurrency=1`): the database suites share the `xeplr_actions_test` database and race to create it when run side by side.
 - **Why:** these files used to carry a fixed host, port and password each (Postgres on `:5435`). On any other machine they all failed, so the pre-commit gate and CI ran only `test/*.test.js` and never this package's sub-folders. That is how `data-operation` shipped returning no rows (fixed in 1.4.2).
 

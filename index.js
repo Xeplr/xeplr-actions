@@ -53,8 +53,11 @@ module.exports = {
   streaming:     streaming,
   drivers:       { db: dbDrivers, file: fileDrivers },
   formats:       formats,
-  // { getWriter(type), INFO, SUPPORTED } — csv / xlsx / pdf writers behind export-table.
+  // { getWriter(type), INFO, SUPPORTED } — csv / xlsx / pdf / parquet writers behind export-table.
   writers:       require('./lib/formats/writers'),
+  // { open, writeAll, readRows, columnsOf, isParquet } — rows to a folder of
+  // Parquet parts and back, through DuckDB (lib/formats/parquet.js).
+  parquet:       require('./lib/formats/parquet'),
 
   // xeplr_configs — shared control-plane DB (import/movement metadata).
   // One call per app: attachConfig({ service }); await xcfg.ready(). See
