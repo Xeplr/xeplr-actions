@@ -23,7 +23,8 @@
     "export",
     "csv",
     "xlsx",
-    "pdf"
+    "pdf",
+    "parquet"
   ],
   "author": "xeplr",
   "license": "MIT",
