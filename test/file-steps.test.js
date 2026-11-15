@@ -15,6 +15,10 @@ var del = require('../lib/builtins/file/delete');
 
 var root = require('../lib/dataDir').tenantFolder();
 var outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'xeplr-outside-')));
+// The test's own folders, fresh each run: the data root is shared between
+// runs, and a bank/, archive/ or link left by the last one failed this one
+// (EEXIST, "already in archive"). Removing a link never touches its target.
+['bank', 'archive', 'link'].forEach(function(own) { fs.rmSync(path.join(root, own), { recursive: true, force: true }); });
 fs.mkdirSync(path.join(root, 'bank'));
 fs.writeFileSync(path.join(root, 'bank', 'Bank-2026-09.csv'), 'ref,amount,date\nA1,500,2026-09-02\nA2,20,2026-09-03\n');
 fs.writeFileSync(path.join(root, 'bank', 'Bank-2026-08.csv'), 'ref,amount\nB1,1\n');
@@ -65,6 +69,9 @@ test('nothing outside the tenant\'s folder: not by path, not by ../, not by a li
   assert.match(direct.error.message, /outside this company's folder/);
   var climb = await runAction(read, { path: path.join(root, 'bank', '..', '..', path.basename(outside), 'secret.csv') });
   assert.equal(climb.error.code, 'PATH_NOT_ALLOWED');
+  // The data root is shared between runs: a link a previous run left would
+  // make this one fail on EEXIST. Removing a link never touches its target.
+  fs.rmSync(path.join(root, 'link'), { force: true });
   fs.symlinkSync(outside, path.join(root, 'link'));
   var linked = await runAction(read, { path: path.join(root, 'link', 'secret.csv') });
   assert.equal(linked.error.code, 'PATH_NOT_ALLOWED');
