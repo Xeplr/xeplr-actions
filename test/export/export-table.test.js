@@ -112,17 +112,33 @@ test('xlsx: rows from an NDJSON file, streamed', async function() {
   assert.match(x.sheet, /<c r="C5001" s="\d+"><v>4999<\/v><\/c>/);
 });
 
+// Streaming measured 5.7–7.2 MB of live heap; merely holding the 200k parsed
+// rows is 34 MB more, before any copy a writer would keep. Between the two.
+var LIVE_LIMIT_MB = 20;
+
 test('xlsx: 200,000 rows stream without holding them', async function() {
   var file = out('huge.ndjson');
   var fd = fs.openSync(file, 'w');
   for (var i = 0; i < 200000; i++) fs.writeSync(fd, JSON.stringify({ values: ['region ' + (i % 50), '2024-01-01', i * 1.5, i % 100 / 100] }) + '\n');
   fs.closeSync(fd);
-  if (global.gc) global.gc();
-  var before = process.memoryUsage().rss;
-  var res = await run({ format: 'xlsx', document: { columns: DOC.columns }, rowsFile: file, outputPath: out('huge.xlsx') });
-  var grown = (process.memoryUsage().rss - before) / 1048576;
+  // LIVE heap, not RSS. RSS swung 175–235 MB run to run on the same code (the
+  // allocator keeps freed pages, and when the collector runs is chance), so a
+  // limit on it failed about one run in three. Garbage is collected every
+  // 100 ms while the export runs and the peak of what is still reachable is
+  // kept: a writer that held the rows would show them; one that streams does
+  // not. `gc` is switched on here, so no flag is needed on the command line.
+  require('v8').setFlagsFromString('--expose-gc');
+  var gc = require('vm').runInNewContext('gc');
+  gc();
+  var before = process.memoryUsage().heapUsed;
+  var peak = before;
+  var sampler = setInterval(function() { gc(); peak = Math.max(peak, process.memoryUsage().heapUsed); }, 100);
+  try {
+    var res = await run({ format: 'xlsx', document: { columns: DOC.columns }, rowsFile: file, outputPath: out('huge.xlsx') });
+  } finally { clearInterval(sampler); }
+  var grown = (peak - before) / 1048576;
   assert.strictEqual(res.rows, 200000);
-  assert.ok(grown < 200, 'memory grew ' + grown.toFixed(0) + ' MB writing 200k rows');
+  assert.ok(grown < LIVE_LIMIT_MB, 'live heap grew ' + grown.toFixed(1) + ' MB writing 200k rows');
 });
 
 test('csv: raw values, BOM, quoting, and no formula injection', async function() {
