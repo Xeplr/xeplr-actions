@@ -466,7 +466,7 @@ await runAction(builtins.exportTable, {
 // → { filePath, fileName, contentType, bytes, rows, truncated }
 ```
 
-- **Streaming.** CSV and Excel stream rows to disk, from `rows` or from `rowsFile` (NDJSON, one row per line, as `streaming.spool` writes it); 200,000 rows to xlsx take about 2 s in flat memory. Our own xlsx writer runs on `fflate`. `exceljs` was rejected: it pulls a `uuid` with a published advisory and has had no release since December 2024.
+- **Streaming.** CSV and Excel stream rows to disk, from `rows` or from `rowsFile` (NDJSON, one row per line, as `streaming.spool` writes it); 200,000 rows to xlsx take about 2 s in flat memory: `test/export/export-table.test.js` checks the **live heap** while they are written (garbage collected every 100 ms, peak kept) stays under 20 MB. Streaming uses about 6; holding the rows would be 38 or more. It once measured RSS, which swung 175–235 MB on the same code and failed one run in three. Our own xlsx writer runs on `fflate`. `exceljs` was rejected: it pulls a `uuid` with a published advisory and has had no release since December 2024.
 - **Fonts.** pdfkit's built-in fonts cannot draw `₹` or non-Latin text; a missing glyph draws as nothing. The PDF embeds **DejaVu Sans Condensed** (the `dejavu-fonts-ttf` peer). Pass `document.font` / `boldFont` (TTF/OTF paths) for scripts it lacks. Only the glyphs used are embedded.
 - **Output** goes to `outputPath` (a name inside the tenant's folder), or to a new directory in its `tmp/` with a file named after the title. A failed export leaves no half-written file.
 
