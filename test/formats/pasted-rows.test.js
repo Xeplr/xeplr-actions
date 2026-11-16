@@ -110,6 +110,39 @@ test('a cell holding pasted rows is found, without changing anything', async fun
   assert.deepStrictEqual(found.examples.map(function(e) { return [e.row, e.column, e.rows]; }), [[2, 'Description', 3]]);
 });
 
+test('a long scan says how far it has read, and stops when asked', async function() {
+  // A CSV big enough to take more than one read of the stream.
+  var csv = path.join(dir, 'long.csv');
+  var lines = ['Entry_No,Description'];
+  for (var i = 1; i <= 60000; i++) lines.push(i + ',Item number ' + i);
+  fs.writeFileSync(csv, lines.join('\n') + '\n');
+  var bytes = fs.statSync(csv).size;
+
+  var heard = [];
+  var found = await formats.scanPastedRows('csv', csv, { onProgress: function(p) { heard.push(p); } });
+  assert.strictEqual(found.cells, 0);
+  var last = heard[heard.length - 1];
+  assert.deepStrictEqual(last, { rowsRead: 60000, bytesRead: bytes, bytes: bytes }, 'the last word is the whole file');
+
+  var controller = new AbortController();
+  var seen = 0;
+  var stopped = await formats.scanPastedRows('csv', csv, {
+    signal: controller.signal,
+    onProgress: function() { seen++; }
+  }).then(function() { return null; }, function(err) { return err; });
+  assert.strictEqual(stopped, null, 'not stopped when nobody asked');
+  controller.abort();
+  var err = await formats.scanPastedRows('csv', csv, { signal: controller.signal }).catch(function(e) { return e; });
+  assert.strictEqual(err && err.code, 'ABORTED', 'a stopped scan throws ABORTED');
+  assert.ok(seen >= 1);
+
+  // Excel is read by path: rows are counted, bytes are not known.
+  var xl = [];
+  await formats.scanPastedRows('excel', FILE, { onProgress: function(p) { xl.push(p); } });
+  assert.strictEqual(xl[xl.length - 1].bytesRead, null);
+  assert.strictEqual(xl[xl.length - 1].rowsRead, 6);
+});
+
 test('...and put back: every row whole, in order, the eaten quotes restored', async function() {
   var rows = await all(expandPastedRows(formats.getFormat('excel').parsePath(FILE, {})));
   assert.deepStrictEqual(rows.map(function(r) { return r.Entry_No; }),
