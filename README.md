@@ -242,7 +242,7 @@ await runAction({ name: 's3-upload', input: {
 - **Postgres:** `pg_dump -Fc --no-owner --no-acl` — the custom format, already compressed, restored with `pg_restore`. `pg_dump` must be **at least the server's version** (it refuses an older one, and the step says so).
 - **MySQL / MariaDB:** `mysqldump --single-transaction --quick --routines --triggers --events --databases <db>`, gzipped as it is written.
 - **No shell, ever.** The program is run with an argument list built here; the password goes in its environment (`PGPASSWORD`, `MYSQL_PWD`), never on the command line where `ps` shows it. A database, host or user starting with `-` is refused (it would be read as an option).
-- **Written under `<name>.partial`, renamed only when the program ends cleanly.** A failure removes it and fails the step with the end of what the program said, the password taken out. A program that is not installed is named ("pg_dump is not installed on this server").
+- **Written under `<name>.partial`, renamed only when the program ends cleanly.** A failure removes it — after the file has closed, so one that comes before the file has even opened leaves nothing either — and fails the step with the end of what the program said, the password taken out. A program that is not installed is named ("pg_dump is not installed on this server").
 - `system.signal` stops it (the program is killed); `system.onProgress({ bytes })` every second.
 
 **folder-archive**
