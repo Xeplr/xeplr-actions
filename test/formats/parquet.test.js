@@ -3,7 +3,8 @@
 // actions round-tripping through real DuckDB database files.
 //
 //   writer   parts of partRows, _done last, dot-named while being written,
-//            types declared or inferred, a bad value or a stray column
+//            types declared or inferred (a column empty at first waits
+//            for its values), a bad value or a stray column
 //            refused naming the row, bookkeeping columns left behind
 //   reader   a folder as one table, a file, an empty folder
 //   actions  export-table parquet, file-upload format parquet
@@ -92,6 +93,25 @@ test('declared columns win over the values: numeric text is a number, a date a D
   assert.equal(back[0].code, '007');
   assert.equal(back[0].price, 12.5);
   assert.equal(back[1].price, null);
+});
+
+test('a column empty in its first rows keeps its type for when its values come, up to a part', async function() {
+  // Empty for 1,500 rows, then numbers: still a number column, not text.
+  var rows = [];
+  for (var i = 1; i <= 2500; i++) rows.push({ id: i, late: i > 1500 ? i * 0.5 : null, never: null });
+  var done = await parquet.writeAll(rows, { dir: place('late'), partRows: 2000 });
+  assert.equal(done.rows, 2500);
+  var d = await describe(place('late'));
+  assert.equal(d.types.late, 'DOUBLE');
+  assert.equal(d.types.never, 'VARCHAR', 'empty for a whole part: text');
+  var back = await all(parquet.readRows(place('late')));
+  assert.equal(back[1500].late, 750.5);
+  assert.equal(back[0].late, null);
+  // Past one part with no value it is text, and a later number is kept as text.
+  var later = [];
+  for (var j = 1; j <= 1200; j++) later.push({ id: j, v: j > 1100 ? j : null });
+  await parquet.writeAll(later, { dir: place('late2'), partRows: 1000 });
+  assert.equal((await describe(place('late2'))).types.v, 'VARCHAR');
 });
 
 test('a value that does not fit fails the write naming row and column, and leaves no part', async function() {
