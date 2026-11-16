@@ -86,6 +86,11 @@ test('a dump program that is not installed is named', async function() {
   try {
     var res = await runAction(dump, { dbType: 'mysql', connection: CONN, database: 'x' });
     assert.match(res.error.message, /mysqldump is not installed on this server/);
+    // It fails before the file has opened: the file must still not be left,
+    // nor appear a moment later when that open lands (a race — so ten times).
+    for (var i = 0; i < 10; i++) await runAction(dump, { dbType: 'mysql', connection: CONN, database: 'x', fileName: 'gone-' + i + '.sql.gz' });
+    await new Promise(function(r) { setTimeout(r, 100); });
+    assert.deepStrictEqual(fs.readdirSync(path.join(root, 'backups')).filter(function(n) { return /\.partial$/.test(n); }), [], 'no .partial left');
   } finally { process.env.PATH = was; }
 });
 
