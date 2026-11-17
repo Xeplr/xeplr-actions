@@ -136,6 +136,49 @@ test('a long scan says how far it has read, and stops when asked', async functio
   assert.strictEqual(err && err.code, 'ABORTED', 'a stopped scan throws ABORTED');
   assert.ok(seen >= 1);
 
+  // A row limit. Within it: scanned whole. Over it: skipped, nothing scanned.
+  var est60 = await formats.estimateRows(csv);
+  assert.ok(Math.abs(est60 - 60001) < 60001 * 0.02, 'estimated close to its 60,001 lines (' + est60 + ')');
+  var small = path.join(dir, 'small.csv');
+  fs.writeFileSync(small, 'a,b\n1,2\n3,4');
+  assert.strictEqual(await formats.estimateRows(small), 3, 'a file under 1 MB is counted exactly, a last line without a newline too');
+  fs.writeFileSync(small, '');
+  assert.strictEqual(await formats.estimateRows(small), 0);
+  var within = await formats.scanPastedRows('csv', csv, { maxRows: 70000 });
+  assert.strictEqual(within.tooMany, undefined, 'within the limit: checked whole');
+  var skipHeard = [];
+  var skipped = await formats.scanPastedRows('csv', csv, { maxRows: 1000, onProgress: function(p) { skipHeard.push(p); } });
+  assert.deepStrictEqual(skipped, { cells: 0, rows: 0, examples: [], tooMany: true }, 'over it: not checked');
+  assert.strictEqual(skipHeard.length, 0, 'and not a row was read');
+
+  // A big file: estimated from its first MB, skipped without reading the rest.
+  var big = path.join(dir, 'big.csv');
+  var out = fs.openSync(big, 'w');
+  var line = '';
+  for (var b = 0; b < 2000; b++) line += b + ',Item number ' + b + '\n';
+  for (var rep = 0; rep < 800; rep++) fs.writeSync(out, line);   // 1.6 million rows, ~40 MB
+  fs.closeSync(out);
+  var est = await formats.estimateRows(big);
+  assert.ok(Math.abs(est - 1600000) < 1600000 * 0.05, 'estimated within 5% from the first MB (' + est + ')');
+  var t0 = Date.now();
+  var bigSkip = await formats.scanPastedRows('csv', big, { maxRows: 1000000 });
+  assert.strictEqual(bigSkip.tooMany, true);
+  assert.ok(Date.now() - t0 < 500, 'skipped at once (' + (Date.now() - t0) + ' ms)');
+
+  // An estimate that is low still stops at the limit: a short first MB, then long rows... here, the reverse — a
+  // file whose first MB has long lines and the rest short ones, so it is estimated under the limit.
+  var tricky = path.join(dir, 'tricky.csv');
+  var tf = fs.openSync(tricky, 'w');
+  var longLine = 'x'.repeat(2000) + '\n';
+  for (var l = 0; l < 600; l++) fs.writeSync(tf, longLine);         // ~1.2 MB of long lines
+  var shortLines = '';
+  for (var sl = 0; sl < 10000; sl++) shortLines += 's\n';
+  for (var r2 = 0; r2 < 120; r2++) fs.writeSync(tf, shortLines);    // 1.2 million short rows
+  fs.closeSync(tf);
+  assert.ok((await formats.estimateRows(tricky)) < 1000000, 'estimated under the limit');
+  var stopped2 = await formats.scanPastedRows('csv', tricky, { maxRows: 1000000 });
+  assert.deepStrictEqual(stopped2, { cells: 0, rows: 0, examples: [], tooMany: true }, '...yet stopped at the limit, not checked');
+
   // Excel is read by path: rows are counted, bytes are not known.
   var xl = [];
   await formats.scanPastedRows('excel', FILE, { onProgress: function(p) { xl.push(p); } });
