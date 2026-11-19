@@ -81,7 +81,7 @@ var moved = await actions.runAction(actions.builtins.dbMove, {
 | `drivers.db` | `{ getDriver(type), checkDriverRequires, SUPPORTED }` — `postgres`, `mysql`, `mssql`, `mongo`, `duckdb`. |
 | `drivers.file` | `{ getSource(type), checkSourceRequires, SUPPORTED }` — `local`, `sharepoint`, `google`, `sftp`. |
 | `formats` | `{ getFormat(type), checkFormatRequires, SUPPORTED }` — `excel`, `csv`, `txt`, `json`, `parquet`. |
-| `parquet` | `{ open, writeAll, readRows, columnsOf, isParquet }` — rows to a folder of Parquet parts and back, through DuckDB. See [Parquet](#parquet-the-hand-off-to-python-and-warehouses). |
+| `parquet` | `{ open, writeAll, writeQuery, readRows, columnsOf, isParquet }` — rows to a folder of Parquet parts and back, through DuckDB; `writeQuery` has the database write a query's rows itself. See [Parquet](#parquet-the-hand-off-to-python-and-warehouses). |
 | `attachConfig({ service, applicationId? })` | Connect to the shared `xeplr_configs` database; see [Movement metadata](#movement-metadata-xeplr_configs). |
 | `configRequiredEnv` | `['XCFG_DB_NAME']` — spread into your app's required-env list. |
 
@@ -523,6 +523,22 @@ var w = p.open({ dir }); await w.write(row); …; await w.close();   // or abort
 - A failed or stopped write (`signal` → `code: 'STOPPED'`) removes the parts it wrote and writes no `_done`.
 
 Our bookkeeping columns (`__xeplr_id__`, `__xeplr_movement_id__`) never come along, as in every load. No rows with declared columns gives one empty part (a reader still finds the columns); no rows and none declared gives only `_done`, which reads as empty.
+
+**A query, written by the database itself** (`writeQuery`, `lib/formats/queryToParquet.js`). When no row needs work on the way, the database hands the whole result over at once, and no row passes through JavaScript:
+
+```js
+var done = await p.writeQuery({ dbType, connection, sql, dir, select?, signal?, timeoutMs? });
+// → { path, rows, bytes, columns: [{ name, type }] }   the same folder: part-00001.parquet, _done
+```
+
+- **DuckDB:** `COPY (SELECT …) TO '<part>'`, the file opened read-only. DuckDB writes it in native code, across threads.
+- **Postgres:** one bulk export, `COPY (SELECT …) TO STDOUT` as CSV (`pg-copy-streams`), its bytes piped to a file and never parsed here. An in-memory DuckDB then reads that file with each column's own Postgres type (`PG_TYPES`; a quoted empty text stays text, never a null) and writes the part. No DuckDB extension is needed, so it works on a server that can only reach npm and PyPI.
+- **`select(columns)`** shapes what is written, as a DuckDB select list over the query's columns (`[{ name, type }]`, DuckDB types): renames, casts, constants. Without it, every column as it is.
+- **`sql` carries no parameters:** Postgres's COPY takes none, so the caller inlines its values first.
+- **A stop (`signal`) or the time limit (`timeoutMs`) ends the database's work**, not only ours (Postgres: `pg_cancel_backend` from a connection of its own, and `statement_timeout`). A failed write leaves no part and no `_done`.
+- Any other database is refused in words (`code: 'QUERY_TO_PARQUET'`); use `open`/`writeAll` there.
+
+Why: an AutoML training read 77 lakh rows one at a time into a Parquet file, 3–4 minutes before Python started. Test: `test/formats/query-to-parquet.test.js` (2,00,000 rows from real Postgres and DuckDB, every type and awkward value, a stop and the time limit).
 
 In a workflow: `db-fetch` (`format: 'parquet'`) → the step that reads it → `db-push` (`filePath`: the folder). `export-table` with `format: 'parquet'` writes one typed file under the headers as column names (made unique).
 

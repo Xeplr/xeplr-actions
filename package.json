@@ -37,7 +37,8 @@
   },
   "dependencies": {
     "@xeplr/expression-handler": "^2.3.1",
-    "@xeplr/schema-handler": "^1.0.0"
+    "@xeplr/schema-handler": "^1.0.0",
+    "pg-copy-streams": "^7.0.0"
   },
   "peerDependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
