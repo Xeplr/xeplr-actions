@@ -28,7 +28,7 @@ Everything else is an **optional peer**, required only when an action actually u
 | `@xeplr/email` | `email-send` with `templateName` |
 | `@xeplr/push` | `push-send` (the host sets it up at boot: `push.init({ knex })`) |
 | `knex` | the knex meta store |
-| `mongodb`, `ssh2-sftp-client`, `exceljs` | declared, but their drivers/sources are not implemented |
+| `mongodb`, `ssh2-sftp-client`, `exceljs` | declared; their drivers and sources are on the roadmap |
 
 A missing peer fails with the `npm install …` line to run, when the action runs (or at `register()` for an action's own `requires`).
 
@@ -655,7 +655,7 @@ Upserts need no index: they are staged and match keys in the move. A read-only o
 | `excel` | file path | `.xlsx` via `unzipper` + `saxes`; `sheet`, `startRow`. Date-styled cells arrive as `Date`. Excel's own escapes in cell text are decoded (`_x000D_` → a real line break; `_x005F_` → `_`), and Japanese phonetic runs (`<rPh>`, furigana) are not joined into the value. |
 | `json` | stream | A JSON array or NDJSON; buffers the whole file. |
 | `parquet` | file path | A `.parquet` file or a folder of parts, streamed a chunk at a time through DuckDB (`@duckdb/node-api`). Typed: no `formatConfig`. |
-| `txt` | — | Placeholder, not implemented. |
+| `txt` | — | Planned for an upcoming release. |
 
 **Rows pasted into one cell** (`lib/formats/pastedRows.js`). Data copied out of an ERP and pasted into Excel: a value starting with `"` (an inch mark) makes Excel put everything up to the next `"` — tabs, line breaks, whole rows — into that one cell. The rows it swallowed exist nowhere else. Seen for real: 465 rows folded into 11 cells.
 - `formats.scanPastedRows(format, filePath, { sheet, onProgress, signal })` → `{ cells, rows, examples: [{ row, column, rows, first }] }` — found, nothing changed. For an import's inspect step. It reads **every row**, so on a CSV of gigabytes it takes minutes: `onProgress({ rowsRead, bytesRead, bytes })` hears how far about once a second and once at the end (`bytesRead` is `null` for Excel, read by path), and an aborted `signal` stops it within a row, throwing `code: 'ABORTED'`. With `maxRows` a file with more rows is **not scanned at all**: a CSV's rows are first estimated from its first MB (`formats.estimateRows(filePath)`, the size over the average line there; exact for a file under 1 MB), and over the limit the answer is `{ cells: 0, rows: 0, examples: [], tooMany: true }` at once. Under it the scan runs and still ends at the first row past the limit, answered the same way, in case the estimate was low. `tooMany` means *not checked*, never *clean*.
