@@ -161,7 +161,8 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `fileRead` | `file-read` | A CSV, text, Excel, JSON or NDJSON file as rows (format from the extension). `{ rows, count, columns, truncated }`, at most `maxRows` (50,000). |
 | `fileMove` | `file-move` | Move or copy a file into a folder (made if missing) or to a new name; `ifExists` as every saving step. `{ path, name, moved, skipped }`. |
 | `fileDelete` | `file-delete` | Delete one file, **permanently** (no trash; `file-move` to a "processed" folder is the reversible one). Never a folder. `ifMissing`: `fail` (default) or `skip`. `{ path, deleted, skipped }`. |
-| `httpRequest` | `http-request` | Call another system's API: `method`, `path`, `query`, `body`, `headers`, signing in with a saved connection. `{ status, ok, body, headers }`. See [Calling an API](#calling-an-api-http-request). |
+| `httpRequest` | `http-request` | Call another system's API: `method`, `path`, `query`, `body`, `headers`, signing in with a saved connection or a token from `get-access-token` (`signInWith`). `{ status, ok, body, headers }`. See [Calling an API](#calling-an-api-http-request). |
+| `getAccessToken` | `get-access-token` | Sign in to an API once and keep the token: `loginUrl`, `body` (the login), `tokenPath`. `{ token, expiresAt, header, prefix, value, origin, ref }` for the next API steps. See [Getting a token](#getting-a-token-get-access-token). |
 | `spawnProgram`, `dbQuery` | — | **Placeholders.** Empty modules with no `name` or `execute`; `register()` rejects them. |
 
 ### Connections
@@ -376,12 +377,52 @@ await runAction({ name: 'http-request', input: {
 | `login` | `url` (path or address), `method` (POST), `body`, `tokenPath` (`data.token`), `expiresInPath`, `header`, `prefix` | calls the login first, then `Authorization: Bearer <token>` |
 | `oauth2` | `tokenUrl`, `clientId`, `clientSecret`, `scope`, `audience` | client credentials; then `Authorization: Bearer <access_token>` |
 
-- **A token from `login` or `oauth2` is kept in this process** until it runs out (`expires_in` / `expiresInPath`, a minute early; 10 minutes when none is given). A 401 throws it away and the call is tried once more with a fresh one.
+- **A token from `login` or `oauth2` is kept** until it runs out (`expires_in` / `expiresInPath`, a minute early; else `lastsSeconds`; 10 minutes when nothing says). A 401 stops using it and the call is tried once more after signing in again. Where it is kept, and refresh tokens: [Getting a token](#getting-a-token-get-access-token). A `login` connection also takes `bodyType: 'form'`, `lastsSeconds`, `refreshUrl` and `refreshTokenPath`.
 - **Retries:** a network failure, 429 or 5xx is tried again (`retries`, 2), waiting `retryAfterMs` (1 s) and doubling, or what `Retry-After` says. A 4xx other than 401 / 429 is not retried.
 - **A status that is not 2xx fails the step** with `HTTP_<status>` and the start of the answer. `failOnError: false`: it succeeds, so the arrows can branch on `output.status`.
 - **A saved connection signs in to its own address only:** a whole URL on another host is refused (`URL_NOT_ON_CONNECTION`), so the key cannot be sent elsewhere. With no connection, `path` may be a whole `https://` address.
 - **Bodies:** JSON by default; `bodyType: 'form'` or `'text'`. The answer is parsed as JSON when it is JSON, else text.
 - **Not yet:** paging through many pages of results.
+
+## Getting a token: `get-access-token`
+
+The first step of most API work, as a step of its own with a fixed form, so nobody writes a request just to log in:
+
+```js
+var t = await runAction({ name: 'get-access-token', input: {
+  loginUrl: 'https://track.example.com/api/login',
+  body: { username: 'ops', password: '…' },        // the host seals it: it holds the password
+  tokenPath: 'data.token',                          // where the token is in the answer
+  expiresInPath: 'data.expires_in'                  // optional: how long it lasts
+} })
+// → output { token, expiresAt, header: 'Authorization', prefix: 'Bearer', value: 'Bearer eyJ…',
+//            origin: 'https://track.example.com', ref }
+
+await runAction({ name: 'http-request', input: {
+  method: 'GET', path: 'https://track.example.com/api/rates',
+  signInWith: t.output                              // in a workflow: "{steps.token.output}"
+} })
+```
+
+| input | |
+|---|---|
+| `loginUrl` (required) | the sign-in address, a whole `https://…` |
+| `method`, `bodyType` | `POST`; `json` or `form` |
+| `body` | the login. Marked `secret: true`: a host seals it and never shows it again |
+| `tokenPath` (required) | where the token is in the answer: `data.token`, `access_token` |
+| `expiresInPath` | where the answer says its lifetime in seconds |
+| `lastsSeconds` | its lifetime when the answer does not say: `86400` for a 24-hour token |
+| `header`, `prefix` | how it is sent: `Authorization` / `Bearer` by default; `Token`, or `''` for none |
+| `apiBaseUrl` | the API it is for, when not on the sign-in address. The token is sent nowhere else |
+| `refreshUrl`, `refreshTokenPath` | renew with a refresh token (`{ grant_type: 'refresh_token', refresh_token }`) instead of the password |
+
+- **The output is only how to send the token** — never the answer, never the password. `token` and `value` are marked `secret: true` in `outputSchema`, for a host to mask in a run's history.
+- **Renewed by itself.** An `http-request` with `signInWith` uses the kept token while it lasts (a minute early, or at half its life when it lasts under two minutes), renews it when it ran out — with the refresh token when there is one, else by signing in again — and on a **401** signs in again and tries once more. A refused refresh token falls back to a full sign-in.
+- **Sent only where it is for:** an `http-request` to another address than `origin` is refused (`TOKEN_NOT_FOR_URL`).
+- **Kept apart per tenant:** the key is the sign-in AND the application and tenant the run is in (`@xeplr/db`). Two companies with the same login sign in separately.
+- **Where it is kept.** With `XEPLR_RUNS_STORE=redis` and `ENCRYPTION_KEY` (settings an app running several processes already has), in Redis through `@xeplr/utils`' cache client: shared by every process, kept across restarts, **sealed** with `ENCRYPTION_KEY`, under `REDIS_PREFIX` + `xtokens:v1:`. Otherwise, or when Redis does not answer within 1.5 s, in this process's memory, which a restart forgets (the next call signs in again). The sign-in itself is kept 30 days (sealed), so a later step can renew a token that ran out; the token is used only until its time.
+- **Stoppable:** the sign-in honours the run's stop switch and `timeoutMs`.
+- **One copy:** a saved connection's `login` / `oauth2` and this step sign in through the same code (`lib/signIn.js`).
 
 ## Where files are: one data root, a folder per tenant
 
