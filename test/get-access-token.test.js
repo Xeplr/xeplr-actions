@@ -251,6 +251,9 @@ test('signs in with a saved connection (what a workflow step holds): the login s
   var viaConn = await runAction(httpStep, { connection: conn, path: '/rates' });
   assert.equal(viaConn.status, 'success', viaConn.error && viaConn.error.message);
   assert.equal(logins, before, 'shared with the connection\'s own sign-in');
+  assert.equal(viaConn.output.body.as, 'Token ' + res.output.token, 'a trimmed prefix still gets its space');
+  var trimmed = await runAction(httpStep, { connection: Object.assign({}, conn, { auth: Object.assign({}, conn.auth, { prefix: 'Token' }) }), path: '/rates' });
+  assert.match(trimmed.output.body.as, /^Token tok-/);
 });
 
 test('a connection that does not sign in by a login call, or one not resolved, is refused', async function() {
