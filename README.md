@@ -374,7 +374,7 @@ await runAction({ name: 'http-request', input: {
 | `apiKey` | `in` (`header` / `query`), `name`, `value` | `X-API-Key: …`, or `?key=…` |
 | `bearer` | `token` | `Authorization: Bearer …` |
 | `basic` | `username`, `password` | `Authorization: Basic …` |
-| `login` | `url` (path or address), `method` (POST), `body`, `tokenPath` (`data.token`), `expiresInPath`, `header`, `prefix` | calls the login first, then `Authorization: Bearer <token>` |
+| `login` | `url` (path or address), `method` (POST), `body`, `bodyType` (`json` / `form`), `tokenPath` (`data.token`), `expiresInPath`, `lastsSeconds`, `refreshUrl` + `refreshTokenPath`, `header`, `prefix` | calls the login first, then `Authorization: Bearer <token>` |
 | `oauth2` | `tokenUrl`, `clientId`, `clientSecret`, `scope`, `audience` | client credentials; then `Authorization: Bearer <access_token>` |
 
 - **A token from `login` or `oauth2` is kept** until it runs out (`expires_in` / `expiresInPath`, a minute early; else `lastsSeconds`; 10 minutes when nothing says). A 401 stops using it and the call is tried once more after signing in again. Where it is kept, and refresh tokens: [Getting a token](#getting-a-token-get-access-token). A `login` connection also takes `bodyType: 'form'`, `lastsSeconds`, `refreshUrl` and `refreshTokenPath`.
@@ -387,6 +387,14 @@ await runAction({ name: 'http-request', input: {
 ## Getting a token: `get-access-token`
 
 The first step of most API work, as a step of its own with a fixed form, so nobody writes a request just to log in:
+
+**In a workflow, the login is a saved API connection** (`connectionInfoId`, signing in by `login` or `oauth2`), picked or made from the step's own picker. A step's inputs are recorded on every run, so a password typed into the step would sit in the run's history; the host resolves the id to `connection` only for the call (`resolveConnections`), as for every other step. The step then needs nothing else:
+
+```js
+await runAction({ name: 'get-access-token', input: { connectionInfoId: 'delivery-login' } })   // resolved by the host
+```
+
+The plain fields below are for scripts and tests; a form leaves them out (`hidden`) unless one is already set.
 
 ```js
 var t = await runAction({ name: 'get-access-token', input: {
@@ -406,14 +414,15 @@ await runAction({ name: 'http-request', input: {
 
 | input | |
 |---|---|
-| `loginUrl` (required) | the sign-in address, a whole `https://…` |
+| `connectionInfoId` | a saved API connection signing in by `login` or `oauth2` — what a workflow uses |
+| `loginUrl` | the sign-in address, a whole `https://…` (without a connection) |
 | `method`, `bodyType` | `POST`; `json` or `form` |
 | `body` | the login. Marked `secret: true`: a host seals it and never shows it again |
 | `tokenPath` (required) | where the token is in the answer: `data.token`, `access_token` |
 | `expiresInPath` | where the answer says its lifetime in seconds |
 | `lastsSeconds` | its lifetime when the answer does not say: `86400` for a 24-hour token |
-| `header`, `prefix` | how it is sent: `Authorization` / `Bearer` by default; `Token`, or `''` for none |
-| `apiBaseUrl` | the API it is for, when not on the sign-in address. The token is sent nowhere else |
+| `header`, `prefix` | how it is sent: the connection's, else `Authorization` / `Bearer`; `Token`, or `''` for none |
+| `apiBaseUrl` | the API it is for, when not the connection's address (or the sign-in's). The token is sent nowhere else |
 | `refreshUrl`, `refreshTokenPath` | renew with a refresh token (`{ grant_type: 'refresh_token', refresh_token }`) instead of the password |
 
 - **The output is only how to send the token** — never the answer, never the password. `token` and `value` are marked `secret: true` in `outputSchema`, for a host to mask in a run's history.
@@ -422,7 +431,7 @@ await runAction({ name: 'http-request', input: {
 - **Kept apart per tenant:** the key is the sign-in AND the application and tenant the run is in (`@xeplr/db`). Two companies with the same login sign in separately.
 - **Where it is kept.** With `XEPLR_RUNS_STORE=redis` and `ENCRYPTION_KEY` (settings an app running several processes already has), in Redis through `@xeplr/utils`' cache client: shared by every process, kept across restarts, **sealed** with `ENCRYPTION_KEY`, under `REDIS_PREFIX` + `xtokens:v1:`. Otherwise, or when Redis does not answer within 1.5 s, in this process's memory, which a restart forgets (the next call signs in again). The sign-in itself is kept 30 days (sealed), so a later step can renew a token that ran out; the token is used only until its time.
 - **Stoppable:** the sign-in honours the run's stop switch and `timeoutMs`.
-- **One copy:** a saved connection's `login` / `oauth2` and this step sign in through the same code (`lib/signIn.js`).
+- **One copy:** a saved connection's `login` / `oauth2` and this step sign in through the same code (`lib/signIn.js`), and share the kept token: an `http-request` on that connection after the step does not sign in again.
 
 ## Where files are: one data root, a folder per tenant
 

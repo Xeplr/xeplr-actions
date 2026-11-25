@@ -236,3 +236,29 @@ test('with XEPLR_RUNS_STORE=redis another process uses the same token, and Redis
     await require('@xeplr/utils/lib/cache').disconnectCache();
   }
 });
+
+test('signs in with a saved connection (what a workflow step holds): the login stays in the connection', async function() {
+  var conn = { baseUrl: base + '/api', auth: { type: 'login', url: '/login', body: { username: 'ops', password: 's3cret' }, tokenPath: 'data.token', expiresInPath: 'data.expires_in', prefix: 'Token ' } };
+  var res = await runAction(tokenStep, { connectionInfoId: 'delivery', connection: conn });
+  assert.equal(res.status, 'success', res.error && res.error.message);
+  assert.equal(res.output.origin, base);
+  assert.equal(res.output.value, 'Token ' + res.output.token);
+  assert.ok(!JSON.stringify(res.output).includes('s3cret'));
+  var call = await runAction(httpStep, { path: base + '/api/rates', signInWith: res.output });
+  assert.equal(call.status, 'success', call.error && call.error.message);
+  // The same sign-in as an http-request on that connection: one token, not two.
+  var before = logins;
+  var viaConn = await runAction(httpStep, { connection: conn, path: '/rates' });
+  assert.equal(viaConn.status, 'success', viaConn.error && viaConn.error.message);
+  assert.equal(logins, before, 'shared with the connection\'s own sign-in');
+});
+
+test('a connection that does not sign in by a login call, or one not resolved, is refused', async function() {
+  var key = await runAction(tokenStep, { connection: { baseUrl: base, auth: { type: 'apiKey', name: 'k', value: 'v' } } });
+  assert.equal(key.status, 'failed');
+  assert.equal(key.error.code, 'AUTH_UNKNOWN');
+  var unresolved = await runAction(tokenStep, { connectionInfoId: 'missing' });
+  assert.equal(unresolved.error.code, 'CONNECTION_NOT_FOUND');
+  var nothing = await runAction(tokenStep, {});
+  assert.equal(nothing.error.code, 'URL_REQUIRED');
+});
