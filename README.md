@@ -141,7 +141,7 @@ Register the ones you want (`register(actions.builtins.dbFetch)`) or pass a modu
 | `dbMove` | `db-move` | One window of rows from a source table, query or procedure into a target table in one streamed pass. See [db-move](#db-move). |
 | `dbDump` | `db-dump` | A whole database to one backup file with its own dump program: `pg_dump -Fc` (Postgres, `.dump`) or `mysqldump` (MySQL, `.sql.gz`). See [Backups](#backups-db-dump-folder-archive-and-s3-upload). |
 | `dbProcedure` | `db-procedure` | Call a stored procedure; returns `{ rows, rowCount, procedure, sql }`. See [db-procedure](#db-procedure). |
-| `dbListTables` | `db-list-tables` | `{ tables }` — base tables in a schema/database. |
+| `dbListTables` | `db-list-tables` | `{ tables }` — base tables in a schema/database. **SQL Server, no `schema` given:** a table outside the login's default schema is named `Schema.Table` (`HumanResources.Employee`), one in it stays bare (`AWBuildVersion`), so a name saved before means the same table. Views (`db-list-views`) and foreign keys follow the same rule, and the driver's `getTableSchema` and `quoteTable` (`[HumanResources].[Employee]`, used by `db-fetch` / `db-move` to read a picked table) accept it. Without this, reading the table looked in `dbo`: "Invalid object name 'Employee'". |
 | `dbListViews` | `db-list-views` | `{ views }`. |
 | `dbListProcedures` | `db-list-procedures` | `{ procedures }` (functions excluded). |
 | `dbListColumns` | `db-list-columns` | `{ columns }` — `name`, `dataType`, `udtName` and `maxLength` (characters; `-1` is SQL Server `(max)`, `null` when it has none) for one table. |

@@ -304,3 +304,53 @@ test('pre-existing INTEGER column: numeric rows land, non-numeric go to error ta
     await driver.query(pool, 'DROP TABLE IF EXISTS ' + driver.quoteIdent(tbl));
   }
 });
+
+// A table outside the login's default schema (AdventureWorks' HumanResources.
+// Employee) is listed as "Schema.Table", so the query reads it from there and
+// not from dbo ("Invalid object name 'Employee'"). Default-schema tables stay
+// bare, so names saved before still mean the same table.
+test('a table in another schema is listed, described and joined as Schema.Table', async function() {
+  var schema = 'xs_' + Math.random().toString(36).slice(2, 8);
+  var parent = tempTable(), child = tempTable(), plain = tempTable();
+  await driver.query(pool, 'CREATE SCHEMA [' + schema + ']');
+  try {
+    await driver.query(pool, 'CREATE TABLE [' + schema + '].[' + parent + '] (id INT PRIMARY KEY, name NVARCHAR(20))');
+    await driver.query(pool, 'CREATE TABLE [' + schema + '].[' + child + '] (id INT PRIMARY KEY, parentId INT REFERENCES [' + schema + '].[' + parent + '](id))');
+    await driver.query(pool, 'CREATE TABLE [' + plain + '] (id INT)');
+
+    var all = await driver.listTables(pool);
+    assert.ok(all.indexOf(schema + '.' + parent) !== -1, 'qualified in the full list');
+    assert.ok(all.indexOf(plain) !== -1, 'default schema stays bare');
+    assert.deepStrictEqual((await driver.listTables(pool, schema)).sort(), [child, parent].sort(), 'bare when the schema was asked for');
+
+    assert.deepStrictEqual((await driver.getTableSchema(pool, schema + '.' + parent)).map(function(c) { return c.name; }), ['id', 'name']);
+    assert.strictEqual((await driver.getTableSchema(pool, parent)).length, 2, 'a bare name saved before still finds its one schema');
+    assert.strictEqual((await driver.getTableSchema(pool, parent, schema)).length, 2);
+
+    var key = (await driver.listForeignKeys(pool)).find(function(k) { return k.table === schema + '.' + child; });
+    assert.ok(key, 'foreign key names the qualified table');
+    assert.strictEqual(key.refTable, schema + '.' + parent);
+  } finally {
+    await driver.query(pool, 'DROP TABLE IF EXISTS [' + schema + '].[' + child + ']');
+    await driver.query(pool, 'DROP TABLE IF EXISTS [' + schema + '].[' + parent + ']');
+    await driver.query(pool, 'DROP TABLE IF EXISTS [' + plain + ']');
+    await driver.query(pool, 'DROP SCHEMA [' + schema + ']');
+  }
+});
+
+test('a source table named Schema.Table is read from its schema', async function() {
+  var schema = 'xs_' + Math.random().toString(36).slice(2, 8);
+  var tbl = tempTable();
+  await driver.query(pool, 'CREATE SCHEMA [' + schema + ']');
+  try {
+    await driver.query(pool, 'CREATE TABLE [' + schema + '].[' + tbl + '] (id INT)');
+    await driver.query(pool, 'INSERT INTO [' + schema + '].[' + tbl + '] VALUES (7)');
+    assert.strictEqual(driver.quoteTable(schema + '.' + tbl), '[' + schema + '].[' + tbl + ']');
+    assert.strictEqual(driver.quoteTable('plain'), '[plain]');
+    var r = await driver.query(pool, 'SELECT id FROM ' + driver.quoteTable(schema + '.' + tbl));
+    assert.strictEqual(Number(r.rows[0].id), 7);
+  } finally {
+    await driver.query(pool, 'DROP TABLE IF EXISTS [' + schema + '].[' + tbl + ']');
+    await driver.query(pool, 'DROP SCHEMA [' + schema + ']');
+  }
+});
